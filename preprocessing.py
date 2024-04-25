@@ -21,6 +21,7 @@ df['date'] = pd.to_datetime(df['date'])
 # Find the unique users and movies
 users = df['username'].unique()
 movies = df['movie'].unique()
+print("\n------------ TASK 1 ------------\n")
 print("Unique Users (U):", len(users))
 print("Unique Movies (I):", len(movies))
 
@@ -30,10 +31,10 @@ print("Unique Movies (I):", len(movies))
 ratings_per_user = df.groupby('username')['rating'].count()
 
 # Define the bins for different ranges of reviews per user
-bins = [0, 4, 50, 100, 500, 1000, float('inf')]
+bins = [1, 10, 101, float('inf')]
 
 # Create labels for the bins
-labels = ['1-4', '5-50', '51-100', '101-500', '501-1000', '1000+']
+labels = ['1-9', '10-100', '101+']
 
 # Cut the data into bins
 ratings_bins = pd.cut(ratings_per_user, bins=bins, labels=labels, right=False)
@@ -42,23 +43,25 @@ ratings_bins = pd.cut(ratings_per_user, bins=bins, labels=labels, right=False)
 bin_counts = ratings_bins.value_counts().sort_index()
 
 # Display the results
+print("\n------------ TASK 2 ------------\n")
 for bin_label, count in bin_counts.items():
     print(f"{bin_label} reviews: {count} users")
 
+# Choose initial values for R_min and R_max
+R_min = 10  # Minimum required number of ratings per user
+R_max = 100  # Maximum allowed number of ratings per user
 
-# # Choose initial values for R_min and R_max
-# R_min = 10
-# R_max = 100
-#
-# # Filter users based on the number of ratings
-# filtered_users = ratings_per_user[(ratings_per_user >= R_min) & (ratings_per_user <= R_max)]
-#
-# # Filter the DataFrame based on the selected users
-# filtered_df = df[df['username'].isin(filtered_users.index)]
-#
-# # Update the sets of unique users and objects
-# users_filtered = filtered_df['username'].unique()
-# movies_filtered = filtered_df['movie'].unique()
-#
-# print("Number of unique users after filtering:", len(users_filtered))
-# print("Number of unique objects after filtering:", len(movies_filtered))
+# Filter users based on the number of ratings
+filtered_users = ratings_per_user[(ratings_per_user >= R_min) & (ratings_per_user <= R_max)]
+
+# Filter the DataFrame based on the selected users
+filtered_df = df[df['username'].isin(filtered_users.index)]
+
+# Get the sets of filtered users and movies
+users_filtered = filtered_df['username'].unique()
+movies_filtered = filtered_df['movie'].unique()
+
+print("R_min =", R_min)
+print("R_max =", R_max)
+print("Filtered Users (Û):", len(users_filtered))
+print("Filtered Movies (Î):", len(movies_filtered))
