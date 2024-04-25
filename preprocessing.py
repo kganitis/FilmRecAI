@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# Choose initial values for R_min and R_max
+R_min = 50  # Minimum required number of ratings per user
+R_max = 100  # Maximum allowed number of ratings per user
+
 # ------------ Task 1: Find Unique Users and Movies Sets ------------
 
 # Load the dataset from dataset.npy
@@ -32,10 +36,10 @@ print("Number of Unique Movies (I):", len(unique_movies))
 ratings_per_user = df.groupby('username')['rating'].count()
 
 # Define the bins for different ranges of reviews per user
-bins = [1, 10, 101, float('inf')]
+bins = [1, R_min, R_max+1, float('inf')]
 
 # Create labels for the bins
-labels = ['1-9', '10-100', '101+']
+labels = [f'1-{R_min-1}', f'{R_min}-{R_max}', f'{R_max+1}+']
 
 # Cut the data into bins
 ratings_bins = pd.cut(ratings_per_user, bins=bins, labels=labels, right=False)
@@ -47,10 +51,7 @@ bin_counts = ratings_bins.value_counts().sort_index()
 print("\n------------ Task 2: Filter Users based on Number of Ratings ------------\n")
 for bin_label, count in bin_counts.items():
     print(f"{bin_label} reviews: {count} users")
-
-# Choose initial values for R_min and R_max
-R_min = 10  # Minimum required number of ratings per user
-R_max = 100  # Maximum allowed number of ratings per user
+print()
 
 # Filter users based on the number of ratings
 filtered_users = ratings_per_user[(ratings_per_user >= R_min) & (ratings_per_user <= R_max)]
@@ -69,28 +70,44 @@ print("Number of Filtered Movies (Î):", len(filtered_unique_movies))
 
 # ------------ Task 3: Generate Frequency Histograms ------------
 
-# Recalculate the number of ratings per user based on the filtered DataFrame
-ratings_per_user_filtered = filtered_df.groupby('username')['rating'].count()
+# # Recalculate the number of ratings per user based on the filtered DataFrame
+# ratings_per_user_filtered = filtered_df.groupby('username')['rating'].count()
+#
+# # First Histogram: Number of Ratings per User
+# plt.figure(figsize=(10, 5))
+# plt.hist(ratings_per_user_filtered, bins=range(1, max(ratings_per_user_filtered) + 2), edgecolor='black', alpha=0.7)
+# plt.title('Number of Ratings per User (Filtered Data)')
+# plt.xlabel('Number of Ratings')
+# plt.ylabel('Number of Users')
+# plt.grid(True)
+# plt.show()
+#
+# # Calculate time ranges (in days) for each user based on the filtered DataFrame
+# first_rating_date = filtered_df.groupby('username')['date'].min()
+# last_rating_date = filtered_df.groupby('username')['date'].max()
+# time_ranges = (last_rating_date - first_rating_date).dt.days
+#
+# # Second Histogram: Time Ranges for All Ratings by Users (Filtered Data)
+# plt.figure(figsize=(10, 5))
+# plt.hist(time_ranges, bins=range(0, max(time_ranges) + 8, 7), edgecolor='black', alpha=0.7)
+# plt.title('Time Ranges for All Ratings by Users (Filtered Data)')
+# plt.xlabel('Time Range (days)')
+# plt.ylabel('Number of Users')
+# plt.grid(True)
+# plt.show()
 
-# First Histogram: Number of Ratings per User
-plt.figure(figsize=(10, 5))
-plt.hist(ratings_per_user_filtered, bins=range(1, max(ratings_per_user_filtered) + 2), edgecolor='black', alpha=0.7)
-plt.title('Number of Ratings per User (Filtered Data)')
-plt.xlabel('Number of Ratings')
-plt.ylabel('Number of Users')
-plt.grid(True)
-plt.show()
+# ------------ Task 4: Generate Preference Vectors for each User ------------
 
-# Calculate time ranges (in days) for each user based on the filtered DataFrame
-first_rating_date = filtered_df.groupby('username')['date'].min()
-last_rating_date = filtered_df.groupby('username')['date'].max()
-time_ranges = (last_rating_date - first_rating_date).dt.days
+# Use pivot_table to aggregate duplicate ratings by taking the maximum rating for each user-movie combination
+pivot_df = filtered_df.pivot_table(index='username', columns='movie', values='rating', aggfunc='last')
 
-# Second Histogram: Time Ranges for All Ratings by Users (Filtered Data)
-plt.figure(figsize=(10, 5))
-plt.hist(time_ranges, bins=range(0, max(time_ranges) + 8, 7), edgecolor='black', alpha=0.7)
-plt.title('Time Ranges for All Ratings by Users (Filtered Data)')
-plt.xlabel('Time Range (days)')
-plt.ylabel('Number of Users')
-plt.grid(True)
-plt.show()
+# Fill missing values (movies not rated by users) with 0
+pivot_df.fillna(0, inplace=True)
+
+# Convert the pivot table to a numpy array of preference vectors
+preference_vectors = pivot_df.values
+
+# Print the first few preference vectors
+# ------------ Task 4: Generate Preference Vectors for each User ------------
+print("First few preference vectors:")
+print(preference_vectors[:5])
