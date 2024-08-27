@@ -1,9 +1,13 @@
+from collections import deque
+
 import numpy as np
+from sklearn.preprocessing import normalize
 from sklearn.utils.extmath import stable_cumsum
 from sklearn.utils.validation import check_array, check_random_state
 
 from logger import Logger
-from metrics import euclidean_distance_generalized
+from metrics import euclidean_distance_generalized as eucl_gen
+from plotting import plot_clusters
 
 
 class KMeans:
@@ -34,6 +38,8 @@ class KMeans:
     - Allows the use of a callable distance metric defined by the user.
 
     - Allows for a weighted method of averaging the cluster centers.
+
+    - Detects and resolves clusterings oscillations.
 
     Parameters
     ----------
@@ -94,8 +100,10 @@ class KMeans:
         Number of iterations run.
     """
 
-    def __init__(self, n_clusters=5, init='random', n_init=10, max_iter=100, tol=1e-4, random_state=None,
-                 metric=euclidean_distance_generalized, averaging='mean', log_level=Logger.ERROR):
+    def __init__(self, n_clusters=8, init='random', n_init=10, max_iter=100, tol=1e-4, random_state=None,
+                 metric=eucl_gen, averaging='mean', log_level=Logger.ERROR,
+                 mean_center_x=False, normalize_x=False,
+                 plot_iters=False, plot_results=False, plot_normalized=False, dim_reduct='pca'):
         self.n_clusters = n_clusters
         self.init = init
         self.n_init = n_init
@@ -106,6 +114,19 @@ class KMeans:
         self.random_state = check_random_state(random_state)
         self.logger = Logger(log_level)
 
+        # TODO Delete for release
+        # Preprocessing
+        self.mean_center_x = mean_center_x
+        self.normalize_x = normalize_x
+        # Plotting
+        self.plot_iters = plot_iters
+        self.plot_results = plot_results
+        self.dim_reduct = dim_reduct
+        self.plot_normalized = plot_normalized
+        # Debugging
+        self.n_osc = False
+        self.n_mctnds = 0
+
     def _kmeans_plusplus(self, X):
         """K-means++ initialization of centroids."""
         centers = np.empty((self.n_clusters, self.n_features), dtype=X.dtype)
@@ -115,13 +136,13 @@ class KMeans:
         centers[0] = X[self.random_state.choice(self.n_samples)]
 
         # Compute the initial closest distances to the first center
-        closest_dist_sq = np.array([self.metric(X[i], centers[0]) for i in range(self.n_samples)])
-        current_pot = closest_dist_sq.sum()
+        closest_dist = np.array([self.metric(X[i], centers[0]) for i in range(self.n_samples)])
+        current_pot = closest_dist.sum()
 
         for c in range(1, self.n_clusters):
             # Select new center candidates proportional to the squared distances
             rand_vals = self.random_state.uniform(size=n_local_trials) * current_pot
-            candidate_ids = np.searchsorted(stable_cumsum(closest_dist_sq), rand_vals)
+            candidate_ids = np.searchsorted(stable_cumsum(closest_dist), rand_vals)
 
             # Calculate distances from all points to candidate centers
             distance_to_candidates = np.array([
@@ -130,10 +151,10 @@ class KMeans:
             ])
 
             # Find the candidate that gives the lowest potential
-            min_distances = np.minimum(closest_dist_sq, distance_to_candidates).min(axis=0)
+            min_distances = np.minimum(closest_dist, distance_to_candidates).min(axis=0)
             best_candidate = np.argmin(min_distances.sum(axis=0))
             current_pot = min_distances.sum()
-            closest_dist_sq = min_distances
+            closest_dist = min_distances
 
             # Add the best candidate as the new center
             centers[c] = X[candidate_ids[best_candidate]]
@@ -188,6 +209,16 @@ class KMeans:
         self.n_samples, self.n_features = X.shape
         self.X_plotted = X
 
+        if self.mean_center_x:
+            X = X.copy()
+            X -= X.mean(axis=0)
+
+        if self.normalize_x:
+            X = X.copy()
+            X = normalize(X, norm='l2', axis=1)
+            if self.plot_normalized:
+                self.X_plotted = X
+
         best_centers, best_inertia, best_labels, best_n_iter = None, None, None, 1
 
         if self.init == 'k-means++':
@@ -206,11 +237,27 @@ class KMeans:
             self.__log(f"Cluster sizes: {self.__cluster_sizes(labels, sort='desc')}", nl=True)
             self.__log(f"Inertia: {inertia}\n")
 
+            # Plot the results of each initiliazation
+            if self.plot_results and self.n_init > 1:
+                title = f"Clusters for L={self.n_clusters} using {self.metric.__name__}"
+                plot_clusters(self.X_plotted, centers, labels, title, self.dim_reduct)
+
             # Determine if these results are the best so far.
             if best_inertia is None or (
                     inertia < best_inertia and not self._is_same_clustering(labels, best_labels)
             ):
                 best_labels, best_inertia, best_centers, best_n_iter = labels, inertia, centers, n_iter
+
+        # Plot the final results
+        if self.plot_results:
+            title = f"Clusters for L={self.n_clusters} using {self.metric.__name__}"
+            plot_clusters(self.X_plotted, best_centers, best_labels, title, self.dim_reduct)
+
+        # TODO Delete for release
+        if self.n_osc:
+            self.__log(f"Oscillation detected", Logger.DEBUG, nl=True)
+        if self.n_mctnds > 0:
+            self.__log(f"More clusters than non-duplicate samples: {self.n_mctnds}", Logger.DEBUG, nl=True)
 
         self.cluster_centers = best_centers
         self.labels = best_labels
@@ -256,34 +303,97 @@ class KMeans:
         centers = centers_init
         centers_new = np.zeros_like(centers)
         labels = np.full(self.n_samples, -1, dtype=np.int32)
-        labels_old = labels.copy()
-        inertia, n_iter = np.inf, 0
 
-        for i in range(self.max_iter):
-            n_iter = i + 1
-            self.__log(f"Iteration {n_iter}", nl=True)
+        osc_max_check_size = 4
+        clusters_history = deque(maxlen=osc_max_check_size * 2)
+
+        strict_convergence = [False]  # use a list to allow pass-by-reference behavior
+
+        for i in range(1, self.max_iter + 1):
+            self.__log(f"Iteration {i}", nl=True)
 
             center_shift = self._lloyd_iter(X, centers, centers_new, labels)
+
             inertia = self._inertia(X, centers_new, labels)
+            clusters_history.append((labels.copy(), inertia, centers_new.copy(), i))
+
             centers, centers_new = centers_new, centers
 
-            if np.array_equal(labels, labels_old):
-                # First check the labels for strict convergence.
-                self.__log(f"Converged at iteration {n_iter}: strict convergence.", nl=True)
-                break
-            else:
-                # No strict convergence, check for tol based convergence.
-                center_shift_tot = (center_shift ** 2).sum()
-                if center_shift_tot <= self.tol:
-                    self.__log(
-                        f"Converged at iteration {n_iter}: "
-                        f"center shift {center_shift_tot} within tolerance {self.tol}.",
-                        nl=True)
+            if self.plot_iters:
+                title = f"Clusters for L={self.n_clusters} using {self.metric.__name__}"
+                plot_clusters(self.X_plotted, centers, labels, title, self.dim_reduct)
+
+            # Detect clusterings oscillation
+            if len(clusters_history) >= 4:
+                oscillation_detected = self.__detect_clusterings_oscillation(clusters_history, i)
+                if oscillation_detected:
+                    self.__perturb_centroids(centers, i)
+
+            # Check for convergence
+            if len(clusters_history) >= 2:
+                if self.__check_convergence(clusters_history, center_shift, i, strict_convergence):
                     break
 
-        labels_old[:] = labels
+        return labels, inertia, centers, i
 
-        return labels, inertia, centers, n_iter
+    def __detect_clusterings_oscillation(self, clusters_history, n_iter):
+        """
+        Detects any clusterings oscillation accross the last few iterations.
+
+        Clusterings oscillations occurs when the assignments of clusters to labels oscillate
+        between a few different clusterings without converging to a single stable clustering.
+
+        Read more in: https://cs229.stanford.edu/notes2020spring/cs229-notes7a.pdf
+
+        We suppose our implementation is susceptible to such oscillations due to:
+         - Similarity between cluster centroids leading to ambiguous assignments.
+         - High-dimensional data with sparse features, causing fluctuations in centroid calculations.
+         - An unsuitable distance metric that exacerbates minor variations in data.
+
+        To detect clusterings oscillations, we compare the recent labels configuration
+        with those from a pre-defined number of past iterations (``check_size``).
+        If the labels from ``check_size`` iterations ago match the labels from the current iteration, and similarly,
+        the labels from ``check_size+1`` iterations ago match the labels from the previous iteration, and so on,
+        this signals that the algorithm is oscillating through a set of clusterings every ``check_size`` iterations.
+
+        Upon detecting such oscillation, the algorithm perturbs the centroids slightly,
+        by introducing a small noise to their values, to help escape from the oscillation.
+        """
+        osc_size = 0
+        for check_size in range(2, 1 + len(clusters_history) // 2):
+            for idx in range(1, check_size + 1):
+                if not np.array_equal(clusters_history[-idx][0], clusters_history[-(idx + check_size)][0]):
+                    # No oscillation detected
+                    break
+            else:  # all clustering pairs where found equal, signaling an oscillation
+                osc_size = check_size
+                self.n_osc = osc_size
+                self.__log(f"Clusterings oscillation of size {osc_size} detected at iteration {n_iter}")
+                break
+        return osc_size
+
+    def __perturb_centroids(self, centers, iteration, strength=1e-4):
+        """Introduces a small random noise to the centroids positions to help escape from oscillation."""
+        self.__log(f"Perturbing centroids at iteration {iteration} to escape oscillation.", Logger.VERBOSE)
+        # TODO Not consistently effective; needs scaling based on the magnitude of the feature vectors.
+        noise = np.random.randn(*centers.shape) * strength
+        centers += noise
+
+    def __check_convergence(self, clusters_history, center_shift, n_iter, strict_convergence):
+        """Checks for convergence and updates strict_convergence if applicable."""
+        prev_labels = clusters_history[-2][0]
+        if np.array_equal(clusters_history[-1][0], prev_labels):
+            self.__log(f"Converged at iteration {n_iter}: strict convergence.", nl=True)
+            strict_convergence[0] = True
+            return True
+        else:
+            total_shift = np.sum(center_shift ** 2)
+            if total_shift <= self.tol:
+                self.__log(
+                    f"Converged at iteration {n_iter}: center shift {total_shift} within tolerance {self.tol}.",
+                    nl=True)
+                return True
+        return False
 
     def _lloyd_iter(self, X, centers_old, centers_new, labels, update_centers=True):
         """
