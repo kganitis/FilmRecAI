@@ -1,16 +1,14 @@
 import preprocessing
 import clustering
-from metrics import *
+from metrics import euclidean_distance_generalized, cosine_distance_generalized
 
 if __name__ == '__main__':
     # Preprocess the data
-    data = preprocessing.run(R_min=50, R_max=200, M_min=50, display_graphs=True)
+    data = preprocessing.run(R_min=50, R_max=200, M_min=50)
 
-    # Cluster the data
+    # K-means clustering
     L_values = [5, 7, 10, 15, 20]
-
-    for L in L_values:
-        clustering.run(data, L, metric=euclidean_distance_generalized, seed=1)
-
-    for L in L_values:
-        clustering.run(data, L, metric=cosine_distance_generalized, seed=1)
+    metrics = [euclidean_distance_generalized, cosine_distance_generalized]
+    for metric in metrics:
+        for L in L_values:
+            clustering.run(data, L, metric)

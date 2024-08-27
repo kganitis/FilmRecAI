@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-def run(R_min: int, R_max: int, M_min: int, display_graphs: bool = False, days_interval: int = 90) -> pd.DataFrame:
+def run(R_min: int, R_max: int, M_min: int, display_graphs: bool = True, days_interval: int = 90) -> pd.DataFrame:
     """
     :param R_min: Minimum required number of ratings per user
     :param R_max: Maximum allowed number of ratings per user
