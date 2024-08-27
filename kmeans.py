@@ -37,7 +37,7 @@ class KMeans:
 
     Parameters
     ----------
-    n_clusters : int, default=8
+    k : int, default=8
         The number of clusters to form as well as the number of centroids to generate.
 
     init : {'k-means++', 'random'}, default='random'
@@ -81,6 +81,9 @@ class KMeans:
 
     Attributes
     ----------
+    X : ndarray of shape (n_samples, n_features)
+        The fitted data.
+
     cluster_centers : ndarray of shape (n_clusters, n_features)
         Coordinates of cluster centers.
 
@@ -94,9 +97,9 @@ class KMeans:
         Number of iterations run.
     """
 
-    def __init__(self, n_clusters=5, init='random', n_init=10, max_iter=100, tol=1e-4, random_state=None,
+    def __init__(self, k=5, init='random', n_init=10, max_iter=100, tol=1e-4, random_state=None,
                  metric=euclidean_distance_generalized, averaging='mean', log_level=Logger.ERROR):
-        self.n_clusters = n_clusters
+        self.n_clusters = k
         self.init = init
         self.n_init = n_init
         self.max_iter = max_iter
@@ -176,6 +179,8 @@ class KMeans:
         self : KMeans
             Fitted instance of self.
         """
+        X = X.copy()
+
         X = check_array(
             X,
             accept_sparse="csr",
@@ -185,8 +190,7 @@ class KMeans:
         )
 
         self.tol = self._tolerance(X)
-        self.n_samples, self.n_features = X.shape
-        self.X_plotted = X
+        self.n_samples, self.n_features = X.shape  # type: ignore
 
         best_centers, best_inertia, best_labels, best_n_iter = None, None, None, 1
 
@@ -212,6 +216,7 @@ class KMeans:
             ):
                 best_labels, best_inertia, best_centers, best_n_iter = labels, inertia, centers, n_iter
 
+        self.X = X
         self.cluster_centers = best_centers
         self.labels = best_labels
         self.inertia = best_inertia
@@ -398,8 +403,9 @@ class KMeans:
         farthest_points = np.argpartition(distances, -n_empty)[-n_empty:]
 
         for i, cluster_id in enumerate(empty_clusters):
+            # Reassign the farthest point to the empty cluster
             farthest_point = farthest_points[i]
-            labels[farthest_point] = cluster_id  # Reassign the farthest point to the empty cluster
+            labels[farthest_point] = cluster_id
 
             # Update the new center to the position of this farthest point
             centers_new[cluster_id] = X[farthest_point]
@@ -426,14 +432,12 @@ class KMeans:
 
             if n_points > 0:
                 if self.averaging == 'weighted':
-                    # Calculate the weighted mean for each feature within each cluster,
-                    # where weights are determined by the presence of non-zero values
+                    # Weights are determined by the presence of non-zero values
                     lambda_matrix = (cluster_points != 0).astype(float)
                     weighted_sum = np.sum(cluster_points * lambda_matrix, axis=0)
                     lambda_sum = np.sum(lambda_matrix, axis=0)
                     centers[j] = np.where(lambda_sum != 0, np.divide(weighted_sum, lambda_sum), 0)
                 else:  # default: 'mean'
-                    # Calculate the mean for each feature in the cluster
                     centers[j] = np.mean(cluster_points, axis=0)
             else:
                 # If a cluster is empty, relocate it to the location of the largest cluster

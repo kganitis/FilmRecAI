@@ -1,13 +1,13 @@
 import numpy as np
 
 
-def euclidean_distance(u, v, squared=False):
+def euclidean_distance(u, v):
     """Euclidean distance between two vectors u and v."""
     dist = np.dot(u - v, u - v)
-    return dist if squared else np.sqrt(dist)
+    return np.sqrt(dist)
 
 
-def euclidean_distance_generalized(u, v, squared=False):
+def euclidean_distance_generalized(u, v):
     """
     Euclidean distance between non-zero elements of u and v.
     Returns infinity if there are no common non-zero elements.
@@ -21,7 +21,7 @@ def euclidean_distance_generalized(u, v, squared=False):
     diff = np.where(common_mask, u - v, 0)
     dist = np.sum(diff ** 2)
 
-    return dist if squared else np.sqrt(dist)
+    return np.sqrt(dist)
 
 
 def cosine_similarity(u, v):
@@ -40,8 +40,7 @@ def cosine_similarity(u, v):
 
 def cosine_distance(u, v):
     """Cosine distance between two vectors u and v."""
-    distance = 1 - cosine_similarity(u, v)
-    return distance
+    return 1 - cosine_similarity(u, v)
 
 
 def cosine_similarity_generalized(u, v):
@@ -66,5 +65,21 @@ def cosine_similarity_generalized(u, v):
 
 def cosine_distance_generalized(u, v):
     """Cosine distance between non-zero elements of u and v."""
-    dist = 1 - np.abs(cosine_similarity_generalized(u, v))
-    return dist
+    return 1 - np.abs(cosine_similarity_generalized(u, v))
+
+
+def jaccard_similarity(u, v):
+    """Jaccard similarity between two vectors u and v."""
+    intersection = np.sum((u != 0) & (v != 0))
+    union = np.sum((u != 0) | (v != 0))
+
+    if union == 0:
+        return 0.0
+
+    similarity = intersection / union
+    return similarity
+
+
+def jaccard_distance(u, v):
+    """Jaccard distance between two vectors u and v."""
+    return 1 - jaccard_similarity(u, v)
