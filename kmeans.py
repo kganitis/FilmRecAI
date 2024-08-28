@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.utils.extmath import stable_cumsum
 from sklearn.utils.validation import check_array, check_random_state
+from tqdm import tqdm
 
 from logger import Logger
 from metrics import euclidean_distance_generalized
@@ -198,23 +199,22 @@ class KMeans:
             self.n_init = 1
 
         for i in range(self.n_init):
-            self.__log(f"Initialization {i + 1} out of {self.n_init}", nl=True)
+            with tqdm(total=self.max_iter, desc=f"Initialization {i + 1}/{self.n_init}", leave=False) as pbar:
+                # Initialize random centers
+                centers_init = self._init_centroids(X)
+                self.__log("Initial centroids:", Logger.DEBUG, nl=True)
+                self.__log_centroids(centers_init)
 
-            # Initialize random centers
-            centers_init = self._init_centroids(X)
-            self.__log("Initial centroids:", Logger.DEBUG, nl=True)
-            self.__log_centroids(centers_init)
+                # Run k-means once
+                labels, inertia, centers, n_iter = self._kmeans_single(X, centers_init, pbar)
+                self.__log(f"Cluster sizes: {self.__cluster_sizes(labels, sort='desc')}", nl=True)
+                self.__log(f"Inertia: {inertia}\n")
 
-            # Run k-means once
-            labels, inertia, centers, n_iter = self._kmeans_single(X, centers_init)
-            self.__log(f"Cluster sizes: {self.__cluster_sizes(labels, sort='desc')}", nl=True)
-            self.__log(f"Inertia: {inertia}\n")
-
-            # Determine if these results are the best so far.
-            if best_inertia is None or (
-                    inertia < best_inertia and not self._is_same_clustering(labels, best_labels)
-            ):
-                best_labels, best_inertia, best_centers, best_n_iter = labels, inertia, centers, n_iter
+                # Determine if these results are the best so far.
+                if best_inertia is None or (
+                        inertia < best_inertia and not self._is_same_clustering(labels, best_labels)
+                ):
+                    best_labels, best_inertia, best_centers, best_n_iter = labels, inertia, centers, n_iter
 
         self.X = X
         self.cluster_centers = best_centers
@@ -223,7 +223,7 @@ class KMeans:
         self.n_iter = best_n_iter
         return self
 
-    def _kmeans_single(self, X, centers_init):
+    def _kmeans_single(self, X, centers_init, pbar=None):
         """
         Executes a single run of k-means algorithm.
 
@@ -234,6 +234,9 @@ class KMeans:
 
         centers_init : ndarray of shape (n_clusters, n_features)
             Initial centers.
+
+        pbar : tqdm, optional
+            Progress bar to update during the iterations.
 
         Returns
         -------
@@ -271,6 +274,7 @@ class KMeans:
             center_shift = self._lloyd_iter(X, centers, centers_new, labels)
             inertia = self._inertia(X, centers_new, labels)
             centers, centers_new = centers_new, centers
+            pbar.update(1)
 
             if np.array_equal(labels, labels_old):
                 # First check the labels for strict convergence.

@@ -25,24 +25,39 @@ def run(data: pd.DataFrame, L: int = 5, metric: callable = euclidean_distance_ge
     km = KMeans(metric=metric, k=L, random_state=seed, log_level=Logger.WARNING)
     km.fit(data)
 
-    # Print clustering results
-    # print(f"\nK-MEANS CLUSTERING")
-    # print(f"Metric used: {km.metric.__name__}")
-    # print(f"Number of clusters: {km.n_clusters}")
-    # print(f"Initialization method used: {km.init}")
-    # print(f"Number of initializations: {km.n_init}, seed: {seed}")
-    # print(f"Max number of iterations per run: {km.max_iter}")
-    # print(f"Tolerance: {km.tol}")
+    # Plot clusters
+    title = f"Clusters for L={L} using {metric.__name__}"
+    plot_clusters(km.X, km.cluster_centers, km.labels, title)
 
-    # print(f"\nDATA:")
+    display_results(km)
+
+
+def display_results(km: KMeans):
+    """
+    Print clustering results.
+    :param km: Fitted instance of KMeans
+    """
+    print()
+    # print(f"INITIAL PARAMETERS")
+    # print(f"Initialization method: {km.init}")
+    # print(f"Number of initializations: {km.n_init}")
+    # print(f"Max number of iterations per run: {km.max_iter}")
+    # print(f"Centroid averaging method: {km.averaging}")
+    # print(f"Tolerance: {km.tol}")
+    #
+    # print("-------------------------------------------------------")
+    # print(f"DATA")
     # print(f"Number of samples: {km.n_samples}")
     # print(f"Number of features: {km.n_features}")
-
-    # print(f"\nRESULTS")
+    #
+    # print("-------------------------------------------------------")
+    # print(f"RESULTS")
     print(f"Clusters: {km.cluster_sizes('desc')}")
     # print(f"Inertia: {km.inertia}")
     # print(f"Iterations run: {km.n_iter}")
-    # print("Centroids:")
+    #
+    # print("-------------------------------------------------------")
+    # print(f"CLUSTER CENTERS")
     # for centroid in km.cluster_centers:
     #     n_values_printed = 10
     #     if len(centroid) <= n_values_printed:
@@ -52,7 +67,3 @@ def run(data: pd.DataFrame, L: int = 5, metric: callable = euclidean_distance_ge
     #         last_values = " ".join("{:.2f}".format(x) for x in centroid[-n_values_printed // 2:])
     #         formatted_centroid = "[" + first_values + " ... " + last_values + "]"
     #     print(formatted_centroid)
-
-    # Plot clusters
-    title = f"Clusters for L={L} using {metric.__name__}"
-    plot_clusters(km.X, km.cluster_centers, km.labels, title)

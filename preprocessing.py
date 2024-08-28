@@ -5,6 +5,8 @@ import pandas as pd
 
 def run(R_min: int, R_max: int, M_min: int, display_graphs: bool = True, days_interval: int = 90) -> pd.DataFrame:
     """
+    Preprocess the dataset and generate user preference vectors.
+
     :param R_min: Minimum required number of ratings per user
     :param R_max: Maximum allowed number of ratings per user
     :param M_min: Minimum required number of ratings per movie
@@ -58,6 +60,7 @@ def run(R_min: int, R_max: int, M_min: int, display_graphs: bool = True, days_in
 
     print("R_min:", R_min)
     print("R_max:", R_max)
+    print("M_min:", M_min)
     print("Number of Filtered Users (Û):", n)
     print("Number of Filtered Movies (Î):", m)
 
@@ -88,7 +91,6 @@ def run(R_min: int, R_max: int, M_min: int, display_graphs: bool = True, days_in
         plt.xlabel('Time Range (days)')
         plt.ylabel('Number of Users')
         plt.grid(True)
-        # plt.gca().yaxis.set_major_locator(ticker.MultipleLocator(5))
         plt.show()
 
     print("\n------- Preprocessing: Generate Preference (Feature) Vectors for each User -------\n")
