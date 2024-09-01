@@ -4,7 +4,6 @@ from sklearn.utils.validation import check_array, check_random_state
 from tqdm import tqdm
 
 from logger import Logger
-from metrics import euclidean_distance_generalized
 
 
 class KMeans:
@@ -34,11 +33,11 @@ class KMeans:
     --------------
     - Allows the use of a callable distance metric defined by the user.
 
-    - Allows for a weighted method of averaging the cluster centers.
+    - Allows for different methods of averaging the cluster centers.
 
     Parameters
     ----------
-    k : int, default=8
+    k : int, default=5
         The number of clusters to form as well as the number of centroids to generate.
 
     init : {'k-means++', 'random'}, default='random'
@@ -61,23 +60,22 @@ class KMeans:
     tol : float, default=1e-4
         Relative tolerance in regard to inertia to declare convergence.
 
-    metric : callable, default=euclidean_distance_generalized
+    metric : callable
         What distance metric to use. The function should take two arrays as input and return a float.
 
-    averaging : {'mean', 'weighted'}, default='mean'
+    averaging : {'mean', 'nonzero'}, default='mean'
         Method for averaging the cluster centers after each iteration:
             * 'mean':
             computes the mean of the feature vectors in each cluster.
 
-            * 'weighted':
-            Computes the weighted mean for each feature within each cluster,
-            where weights are determined by the presence of non-zero values.
+            * 'nonzero':
+            computes the mean of the feature vectors in each cluster, ignoring zeros.
 
     random_state : int, RandomState instance or None, default=None
         Determines random number generation for centroid initialization.
         Use an int to make the randomness deterministic.
 
-    log_level : int, default=2 (INFO)
+    log_level : int, default=3 (WARNING)
         The logging level: DEBUG=0, VERBOSE=1, INFO=2, WARNING=3, ERROR=4, CRITICAL=5.
 
     Attributes
@@ -98,8 +96,8 @@ class KMeans:
         Number of iterations run.
     """
 
-    def __init__(self, k=5, init='random', n_init=10, max_iter=100, tol=1e-4, random_state=None,
-                 metric=euclidean_distance_generalized, averaging='mean', log_level=Logger.ERROR):
+    def __init__(self, metric: callable, k=5, init='random', n_init=10, max_iter=100, tol=1e-4,
+                 random_state=None, averaging='mean', log_level=Logger.WARNING):
         self.n_clusters = k
         self.init = init
         self.n_init = n_init
@@ -107,42 +105,39 @@ class KMeans:
         self.tol = tol
         self.metric = metric
         self.averaging = averaging
+        if random_state is None:
+            random_state = np.random.randint(100)
         self.random_state = check_random_state(random_state)
         self.logger = Logger(log_level)
 
-    def _kmeans_plusplus(self, X):
-        """K-means++ initialization of centroids."""
-        centers = np.empty((self.n_clusters, self.n_features), dtype=X.dtype)
-        n_local_trials = 2 + int(np.log(self.n_clusters))
+    def __prepare_data(self, X):
+        """
+        Prepare the data for clustering.
 
-        # Pick the first center randomly
-        centers[0] = X[self.random_state.choice(self.n_samples)]
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Training instances to cluster.
 
-        # Compute the initial closest distances to the first center
-        closest_dist_sq = np.array([self.metric(X[i], centers[0]) for i in range(self.n_samples)])
-        current_pot = closest_dist_sq.sum()
+        Returns
+        -------
+        X : ndarray of shape (n_samples, n_features)
+            Copy of the input data, converted to a numpy array.
+        """
+        X = X.copy()
 
-        for c in range(1, self.n_clusters):
-            # Select new center candidates proportional to the squared distances
-            rand_vals = self.random_state.uniform(size=n_local_trials) * current_pot
-            candidate_ids = np.searchsorted(stable_cumsum(closest_dist_sq), rand_vals)
+        X = check_array(
+            X,
+            accept_sparse="csr",
+            dtype=[np.float64, np.float32],
+            order="C",
+            accept_large_sparse=False,
+        )
 
-            # Calculate distances from all points to candidate centers
-            distance_to_candidates = np.array([
-                [self.metric(X[i], X[candidate]) for i in range(self.n_samples)]
-                for candidate in candidate_ids
-            ])
+        self.tol = self._tolerance(X)
+        self.n_samples, self.n_features = X.shape  # type: ignore
 
-            # Find the candidate that gives the lowest potential
-            min_distances = np.minimum(closest_dist_sq, distance_to_candidates).min(axis=0)
-            best_candidate = np.argmin(min_distances.sum(axis=0))
-            current_pot = min_distances.sum()
-            closest_dist_sq = min_distances
-
-            # Add the best candidate as the new center
-            centers[c] = X[candidate_ids[best_candidate]]
-
-        return centers
+        return X
 
     def _init_centroids(self, X):
         """
@@ -166,6 +161,44 @@ class KMeans:
             centers = X[seeds]
         return centers
 
+    def _kmeans_plusplus(self, X):
+        """K-means++ initialization of centroids."""
+        centers = np.empty((self.n_clusters, self.n_features), dtype=X.dtype)
+
+        # Set the number of local seeding trials
+        n_local_trials = 2 + int(np.log(self.n_clusters))
+
+        # Pick the first center randomly
+        centers[0] = X[self.random_state.choice(self.n_samples)]
+
+        # Initialize list of closest distances and calculate current potential
+        closest_dist_sq = np.array([self.metric(X[i], centers[0]) for i in range(self.n_samples)])
+        current_pot = closest_dist_sq.sum()
+
+        # Pick the remaining n_clusters-1 points
+        for c in range(1, self.n_clusters):
+            # Choose center candidates by sampling with probability
+            # proportional to the distance to the closest existing center
+            rand_vals = self.random_state.uniform(size=n_local_trials) * current_pot
+            candidate_ids = np.searchsorted(stable_cumsum(closest_dist_sq), rand_vals)
+
+            # Compute distances to center candidates
+            distance_to_candidates = np.array([
+                [self.metric(X[i], X[candidate]) for i in range(self.n_samples)]
+                for candidate in candidate_ids
+            ])
+
+            # Decide which candidate is the best
+            min_distances = np.minimum(closest_dist_sq, distance_to_candidates).min(axis=0)
+            best_candidate = np.argmin(min_distances.sum(axis=0))
+            current_pot = min_distances.sum()
+            closest_dist_sq = min_distances
+
+            # Add the best candidate as the new center
+            centers[c] = X[candidate_ids[best_candidate]]
+
+        return centers
+
     def fit(self, X):
         """
         Computes k-means clustering.
@@ -178,20 +211,9 @@ class KMeans:
         Returns
         -------
         self : KMeans
-            Fitted instance of self.
+            Fitted instance of KMeans.
         """
-        X = X.copy()
-
-        X = check_array(
-            X,
-            accept_sparse="csr",
-            dtype=[np.float64, np.float32],
-            order="C",
-            accept_large_sparse=False,
-        )
-
-        self.tol = self._tolerance(X)
-        self.n_samples, self.n_features = X.shape  # type: ignore
+        X = self.__prepare_data(X)
 
         best_centers, best_inertia, best_labels, best_n_iter = None, None, None, 1
 
@@ -200,8 +222,9 @@ class KMeans:
 
         for i in range(self.n_init):
             with tqdm(total=self.max_iter, desc=f"Initialization {i + 1}/{self.n_init}", leave=False) as pbar:
-                # Initialize random centers
+                # Initialize centers
                 centers_init = self._init_centroids(X)
+                self.__log("Centroids initialization complete")
                 self.__log("Initial centroids:", Logger.DEBUG, nl=True)
                 self.__log_centroids(centers_init)
 
@@ -435,13 +458,15 @@ class KMeans:
             n_points = cluster_points.shape[0]
 
             if n_points > 0:
-                if self.averaging == 'weighted':
-                    # Weights are determined by the presence of non-zero values
+                # Compute the new center
+                if self.averaging == 'nonzero':
+                    # Compute the average of the feature vectors in each cluster, ignoring zeros
                     lambda_matrix = (cluster_points != 0).astype(float)
-                    weighted_sum = np.sum(cluster_points * lambda_matrix, axis=0)
+                    nonzero_sum = np.sum(cluster_points * lambda_matrix, axis=0)
                     lambda_sum = np.sum(lambda_matrix, axis=0)
-                    centers[j] = np.where(lambda_sum != 0, np.divide(weighted_sum, lambda_sum), 0)
-                else:  # default: 'mean'
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        centers[j] = np.where(lambda_sum != 0, np.divide(nonzero_sum, lambda_sum), 0)
+                else:  # averaging: 'mean'
                     centers[j] = np.mean(cluster_points, axis=0)
             else:
                 # If a cluster is empty, relocate it to the location of the largest cluster
@@ -543,3 +568,40 @@ class KMeans:
 
             if not log_zeros:
                 self.__log(f"Non-zero count: {n_non_zero}", log_level)
+
+
+def display_kmeans_results(km: KMeans):
+    """
+    Print detailed K-means clustering results.
+    :param km: Fitted instance of KMeans
+    """
+    print()
+    print(f"INITIAL PARAMETERS")
+    print(f"Initialization method: {km.init}")
+    print(f"Number of initializations: {km.n_init}")
+    print(f"Max number of iterations per run: {km.max_iter}")
+    print(f"Centroid averaging method: {km.averaging}")
+    print(f"Tolerance: {km.tol}")
+
+    print("-------------------------------------------------------")
+    print(f"DATA")
+    print(f"Number of samples: {km.n_samples}")
+    print(f"Number of features: {km.n_features}")
+
+    print("-------------------------------------------------------")
+    print(f"RESULTS")
+    print(f"Clusters: {km.cluster_sizes('desc')}")
+    print(f"Inertia: {km.inertia}")
+    print(f"Iterations run: {km.n_iter}")
+
+    print("-------------------------------------------------------")
+    print(f"CLUSTER CENTERS")
+    for centroid in km.cluster_centers:
+        n_values_printed = 10
+        if len(centroid) <= n_values_printed:
+            formatted_centroid = "[" + " ".join("{:.2f}".format(x) for x in centroid) + "]"
+        else:
+            first_values = " ".join("{:.2f}".format(x) for x in centroid[:n_values_printed // 2])
+            last_values = " ".join("{:.2f}".format(x) for x in centroid[-n_values_printed // 2:])
+            formatted_centroid = "[" + first_values + " ... " + last_values + "]"
+        print(formatted_centroid)

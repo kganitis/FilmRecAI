@@ -5,20 +5,21 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 
-def plot_clusters(data, centroids, labels, title, dim_reduct='pca'):
-    if dim_reduct.lower() == 'pca':
-        _plot_clusters_pca(data, centroids, labels, title)
-    elif dim_reduct.lower() in ('pca3d', 'pca-3d'):
-        _plot_clusters_pca_3d(data, centroids, labels, title)
-    elif dim_reduct.lower() in ('tsne', 't-sne'):
+def plot_clusters(data, labels, title, centroids=None, dim_reduct='pca'):
+    dim_reduct = dim_reduct.lower()
+    if dim_reduct == 'pca':
+        _plot_clusters_pca(data, labels, title, centroids)
+    elif dim_reduct in ('pca3d', 'pca-3d'):
+        _plot_clusters_pca_3d(data, labels, title, centroids)
+    elif dim_reduct in ('tsne', 't-sne'):
         _plot_clusters_tsne(data, labels, title)
-    elif dim_reduct.lower() == 'umap':
+    elif dim_reduct == 'umap':
         _plot_clusters_umap(data, labels, title)
     else:
         raise ValueError(f"Invalid dimensionality reduction technique: {dim_reduct}")
 
 
-def _plot_clusters_pca(data, centroids, labels, title):
+def _plot_clusters_pca(data, labels, title, centroids=None):
     # Perform dimensionality reduction using PCA
     pca = PCA(n_components=2)
     pca_data = pca.fit_transform(data)
@@ -52,7 +53,7 @@ def _plot_clusters_pca(data, centroids, labels, title):
     plt.show()
 
 
-def _plot_clusters_pca_3d(data, centroids, labels, title):
+def _plot_clusters_pca_3d(data, labels, title, centroids=None):
     # Perform dimensionality reduction using PCA to 3D
     pca = PCA(n_components=3)
     pca_data = pca.fit_transform(data)

@@ -69,17 +69,16 @@ def cosine_distance_generalized(u, v):
 
 
 def jaccard_similarity(u, v):
-    """Jaccard similarity between two vectors u and v."""
-    intersection = np.sum((u != 0) & (v != 0))
-    union = np.sum((u != 0) | (v != 0))
+    """Jaccard similarity between two binary vectors u and v."""
+    intersection = np.sum(u & v)  # Bitwise AND operation for intersection
+    union = np.sum(u | v)  # Bitwise OR operation for union
 
-    if union == 0:
-        return 0.0
-
-    similarity = intersection / union
-    return similarity
+    return intersection / union if union != 0 else 0.0
 
 
 def jaccard_distance(u, v):
-    """Jaccard distance between two vectors u and v."""
-    return 1 - jaccard_similarity(u, v)
+    """Jaccard distance between two binary vectors u and v."""
+    intersection = np.sum(u & v)  # Bitwise AND operation for intersection
+    union = np.sum(u | v)  # Bitwise OR operation for union
+
+    return 1 - intersection / union if union != 0 else 1.0
