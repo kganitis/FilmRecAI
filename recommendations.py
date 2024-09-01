@@ -1,24 +1,21 @@
-import random
-
 import numpy as np
 import pandas as pd
 from keras import layers, models
-from sklearn.metrics import mean_absolute_error
+from matplotlib import pyplot as plt
 from sklearn.metrics import pairwise_distances
 from sklearn.model_selection import train_test_split
-
 import clustering
 
 
-def run(ratings_df, L=5, k=5, hidden_layer_sizes=None, test_size=0.1):
+def run(ratings_df, L=5, k=5, test_size=0.2):
     # Convert the DataFrame to a numpy array for easier manipulation
     ratings_matrix = ratings_df.to_numpy()
 
-    # Results dictionary to store cluster-wise MAE
+    # Results dictionary to store cluster-wise accuracy
     results = {
         'Cluster': [],
-        'Train MAE': [],
-        'Test MAE': []
+        'Train Accuracy': [],
+        'Test Accuracy': []
     }
 
     # Dictionary to store models and test data for each cluster
@@ -34,7 +31,7 @@ def run(ratings_df, L=5, k=5, hidden_layer_sizes=None, test_size=0.1):
 
     # Train a model for each cluster
     for cluster_label in range(L):
-        print(f"\nTraining model for cluster {cluster_label}\n")
+        print(f"\nTraining model for cluster {cluster_label}")
 
         user_indices = np.where(clusters == cluster_label)[0]
 
@@ -45,29 +42,25 @@ def run(ratings_df, L=5, k=5, hidden_layer_sizes=None, test_size=0.1):
         # Create a neural network model
         model = models.Sequential([
             layers.Input(shape=(X_train.shape[1],)),
-            layers.Dense(64, activation='relu'),
-            layers.Dense(32, activation='relu'),
-            layers.Dense(y_train.shape[1])  # output layer should match the number of movies
+            layers.Dense(4096, activation='relu'),
+            layers.Dense(2048, activation='relu'),
+            layers.Dense(y_train.shape[1], activation='sigmoid')  # output layer for binary classification
         ])
 
         # Compile the model
-        model.compile(optimizer='adam', loss='mean_absolute_error', metrics=['mean_absolute_error'])
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
         # Train the model
-        model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_test, y_test))
-
-        # Predict on the training and test data
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
+        model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_test, y_test), verbose=0)
 
         # Evaluate the model
-        train_mae = mean_absolute_error(y_train, y_train_pred)
-        test_mae = mean_absolute_error(y_test, y_test_pred)
+        train_accuracy = model.evaluate(X_train, y_train, verbose=0)[1]
+        test_accuracy = model.evaluate(X_test, y_test, verbose=0)[1]
 
         # Store the results
         results['Cluster'].append(cluster_label)
-        results['Train MAE'].append(train_mae)
-        results['Test MAE'].append(test_mae)
+        results['Train Accuracy'].append(train_accuracy)
+        results['Test Accuracy'].append(test_accuracy)
 
         # Store the model and test data for later analysis
         models_dict[cluster_label] = {
@@ -78,12 +71,35 @@ def run(ratings_df, L=5, k=5, hidden_layer_sizes=None, test_size=0.1):
 
     # Present results as a table
     results_df = pd.DataFrame(results)
-    print("\nCluster-wise MAE Results:")
+    print("\nCluster-wise Accuracy Results:")
     print(results_df)
 
-    # Test on a number of random users from each cluster
+    # Calculate statistics for each cluster and store the results in a list
+    cluster_results = []
     for cluster_label in range(L):
-        test_random_users(models_dict, cluster_label, n_users=1)
+        stats = cluster_statistics(models_dict, cluster_label)
+        cluster_results.append(stats)
+
+    # Convert the results to a DataFrame for better readability
+    cluster_results_df = pd.DataFrame(cluster_results)
+
+    # Calculate the gap between watched and non-watched averages
+    cluster_results_df['Gap'] = cluster_results_df['Watched Avg'] - cluster_results_df['Non-Watched Avg']
+
+    # Calculate overall averages
+    overall_watched_avg = cluster_results_df['Watched Avg'].mean()
+    overall_non_watched_avg = cluster_results_df['Non-Watched Avg'].mean()
+    overall_gap_avg = cluster_results_df['Gap'].mean()
+
+    # Display the results
+    print(cluster_results_df)
+
+    print(f"\nOverall Watched Avg: {overall_watched_avg:.3f}")
+    print(f"Overall Non-Watched Avg: {overall_non_watched_avg:.3f}")
+    print(f"Overall Gap Avg: {overall_gap_avg:.3f}")
+
+    # Plot the results
+    plot_cluster_statistics(cluster_results_df, overall_watched_avg, overall_non_watched_avg, overall_gap_avg)
 
 
 def get_k_nearest_neighbors(k, user_idx, dist_matrix):
@@ -111,29 +127,79 @@ def prepare_data_for_cluster(ratings_matrix, user_indices, dist_matrix, k, test_
     return train_test_split(X, y, test_size=test_size)
 
 
-def test_random_users(models_dict, cluster_label, n_users, n_ratings=10):
-    """Test the model on n_users random users from the cluster, showing n_ratings non-zero ratings for each user."""
+def cluster_statistics(models_dict, cluster_label):
+    """Calculate and return average and median probabilities for watched and non-watched movies for all users in a cluster."""
     model_info = models_dict[cluster_label]
     model = model_info['model']
     X_test = model_info['X_test']
     y_test = model_info['y_test']
 
-    # Select n_users random users
-    user_indices = random.sample(range(X_test.shape[0]), min(n_users, X_test.shape[0]))
+    # Lists to store probabilities for all users
+    all_watched_probs = []
+    all_non_watched_probs = []
 
-    for user_idx in user_indices:
+    # Iterate over all users in the cluster
+    for user_idx in range(X_test.shape[0]):
         actual_ratings = y_test[user_idx]
-        predicted_ratings = model.predict(X_test[user_idx].reshape(1, -1), verbose=0).flatten()
+        predicted_probabilities = model.predict(X_test[user_idx].reshape(1, -1), verbose=0).flatten()
 
-        # Filter non-zero actual ratings
-        non_zero_indices = np.nonzero(actual_ratings)
-        actual_ratings_non_zero = actual_ratings[non_zero_indices]
-        predicted_ratings_non_zero = predicted_ratings[non_zero_indices]
+        # Separate watched and non-watched movies
+        watched_indices = np.nonzero(actual_ratings)[0]
+        non_watched_indices = np.where(actual_ratings == 0)[0]
 
-        # Select n_ratings random ratings
-        selected_indices = random.sample(range(len(actual_ratings_non_zero)),
-                                         min(n_ratings, len(actual_ratings_non_zero)))
+        # Add the probabilities to the lists
+        all_watched_probs.extend(predicted_probabilities[watched_indices])
+        all_non_watched_probs.extend(predicted_probabilities[non_watched_indices])
 
-        print(f"\nUser {user_idx} in Cluster {cluster_label}:")
-        print("Actual Ratings:    ", [f"{actual_ratings_non_zero[i]:.2f}" for i in selected_indices])
-        print("Predicted Ratings: ", [f"{predicted_ratings_non_zero[i]:.2f}" for i in selected_indices])
+    # Calculate statistics for watched movies
+    watched_avg = np.mean(all_watched_probs) if all_watched_probs else float('nan')
+
+    # Calculate statistics for non-watched movies
+    non_watched_avg = np.mean(all_non_watched_probs) if all_non_watched_probs else float('nan')
+
+    return {
+        'Cluster': cluster_label,
+        'Watched Avg': watched_avg,
+        'Non-Watched Avg': non_watched_avg,
+    }
+
+
+def plot_cluster_statistics(cluster_results_df, overall_watched_avg, overall_non_watched_avg, overall_gap_avg):
+    clusters = cluster_results_df['Cluster']
+    watched_avg = cluster_results_df['Watched Avg']
+    non_watched_avg = cluster_results_df['Non-Watched Avg']
+    gap = cluster_results_df['Gap']
+
+    # Create a bar plot for watched and non-watched averages
+    plt.figure(figsize=(14, 8))
+
+    bar_width = 0.35
+    index = np.arange(len(clusters))
+
+    # Add horizontal lines for overall averages and gap
+    plt.axhline(y=overall_non_watched_avg, color='green', linestyle='-', linewidth=2,
+                label=f'Overall Watched Avg: {overall_watched_avg:.3f}')
+    plt.axhline(y=overall_watched_avg, color='red', linestyle='-', linewidth=2,
+                label=f'Overall Non-Watched Avg: {overall_non_watched_avg:.3f}')
+    plt.axhline(y=overall_gap_avg, color='blue', linestyle='-', linewidth=2,
+                label=f'Overall Gap Avg: {overall_gap_avg:.3f}')
+
+    plt.bar(index, watched_avg, bar_width, label='Watched Avg', color='green', alpha=0.7)
+    plt.bar(index + bar_width, non_watched_avg, bar_width, label='Non-Watched Avg', color='red', alpha=0.7)
+
+    # Plot the gap as a line plot
+    plt.plot(index + bar_width / 2, gap, label='Gap (Watched - Non-Watched)', color='blue', marker='o')
+
+    # Add labels and titles
+    plt.xlabel('Cluster')
+    plt.ylabel('Average Probability')
+    plt.title('Cluster-Wise Watched vs Non-Watched Averages')
+    plt.xticks(index + bar_width / 2, clusters)
+    plt.legend()
+
+    # Show only horizontal grid lines
+    plt.grid(True, linestyle='--', alpha=0.6, axis='y')
+
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
