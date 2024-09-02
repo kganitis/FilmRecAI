@@ -7,25 +7,21 @@ from kmeans import KMeansClustering, display_kmeans_results
 from plotting import plot_clusters
 
 
-def kmeans_clustering(df, L, metric, averaging='mean', min_cluster_size=0, verbose=False, plots=True):
+def kmeans_clustering(df, L, metric, averaging='mean', verbose=True, plots=True):
     if verbose:
-        print(f"\nPerforming K-means clustering for L={L} usign metric={metric}")
+        print(f"\nPerforming K-means clustering for L={L} using metric={metric}")
 
     # Perform K-means clustering
     kmeans = KMeansClustering(
         metric=metric,
         k=L,
         # random_state=1,
-        init='k-means++',
+        init='k-means++',  # for faster results, submitted results where run with init='random'
         # log_level=1,
         max_iter=30,  # results don't seem to improve beyond 30 iterations
         averaging=averaging
     )
     clusters = kmeans.fit_predict(df)
-
-    # Merge small clusters
-    if min_cluster_size > 0:
-        _merge_small_clusters(clusters, min_cluster_size, data=kmeans.X, metric=metric)
 
     # Check the sizes of the clusters
     unique, cluster_sizes = np.unique(clusters, return_counts=True)
@@ -37,10 +33,32 @@ def kmeans_clustering(df, L, metric, averaging='mean', min_cluster_size=0, verbo
 
     # Plot the clusters
     if plots:
-        title = f"K-means clusters for L={L} using {metric.__name__}"
+        title = f"K-means clusters for L={L} using {metric}"
         plot_clusters(kmeans.X, clusters, title, kmeans.cluster_centers)
 
     return clusters
+
+
+def agglomerative_clustering(dist_matrix, L, linkage, min_cluster_size=10, verbose=False, plots=False):
+    if verbose:
+        print("\nPerforming Agglomerative Clustering...")
+
+    # Perform agglomerative clustering
+    clustering = AgglomerativeClustering(n_clusters=L, metric='precomputed', linkage=linkage)
+    clusters = clustering.fit_predict(dist_matrix)
+
+    # Merge small clusters
+    if min_cluster_size > 0:
+        clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=False)
+
+    # Evaluate the clustering
+    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
+
+    # Plot results
+    if plots:
+        _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
+
+    return clusters, silhouette_score_
 
 
 def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False, plots=False):
@@ -73,28 +91,6 @@ def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False
     return clusters, silhouette_score_
 
 
-def agglomerative_clustering(dist_matrix, L, linkage, min_cluster_size=10, verbose=False, plots=False):
-    if verbose:
-        print("\nPerforming Agglomerative Clustering...")
-
-    # Perform agglomerative clustering
-    clustering = AgglomerativeClustering(n_clusters=L, metric='precomputed', linkage=linkage)
-    clusters = clustering.fit_predict(dist_matrix)
-
-    # Merge small clusters
-    if min_cluster_size > 0:
-        clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=verbose)
-
-    # Evaluate the clustering
-    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
-
-    # Plot results
-    if plots:
-        _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
-
-    return clusters, silhouette_score_
-
-
 def _evaluate_clustering(clusters, dist_matrix, verbose=False):
     """Evaluate the clustering using silhouette score and print cluster distribution."""
     silhouette_score_ = silhouette_score(dist_matrix, clusters, metric='precomputed')
@@ -104,7 +100,7 @@ def _evaluate_clustering(clusters, dist_matrix, verbose=False):
     cluster_distribution = dict(zip(unique, counts))
 
     if verbose:
-        print(f"\nSilhouette Score: {silhouette_score_}")
+        # print(f"\nSilhouette Score: {silhouette_score_}")
         print("\nCluster Size Distribution:")
         for cluster, size in cluster_distribution.items():
             print(f"Cluster {cluster}: {size} users")
