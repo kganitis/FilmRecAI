@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
@@ -13,8 +12,6 @@ def plot_clusters(data, labels, title, centroids=None, dim_reduct='pca'):
         _plot_clusters_pca_3d(data, labels, title, centroids)
     elif dim_reduct in ('tsne', 't-sne'):
         _plot_clusters_tsne(data, labels, title)
-    elif dim_reduct == 'umap':
-        _plot_clusters_umap(data, labels, title)
     else:
         raise ValueError(f"Invalid dimensionality reduction technique: {dim_reduct}")
 
@@ -99,23 +96,6 @@ def _plot_clusters_tsne(data, labels, title):
     # Plot the reduced data
     plt.figure(figsize=(10, 7))
     plt.scatter(X_tsne[:, 0], X_tsne[:, 1], c=adj_labels, cmap=cmap, s=30, alpha=0.6)
-    plt.title(title)
-    plt.xlabel('Component 1')
-    plt.ylabel('Component 2')
-    plt.colorbar(label='Cluster Label')
-    plt.show()
-
-
-def _plot_clusters_umap(data, labels, title):
-    umap_reducer = umap.UMAP(n_components=2, random_state=42)
-    X_umap = umap_reducer.fit_transform(data)
-
-    adj_labels = labels + 1
-    cmap = plt.get_cmap('tab20', np.max(adj_labels))
-
-    # Plot the reduced data
-    plt.figure(figsize=(10, 7))
-    plt.scatter(X_umap[:, 0], X_umap[:, 1], c=adj_labels, cmap=cmap, s=30, alpha=0.6)
     plt.title(title)
     plt.xlabel('Component 1')
     plt.ylabel('Component 2')

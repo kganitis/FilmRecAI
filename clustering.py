@@ -1,145 +1,190 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
-from sklearn.cluster import SpectralClustering
+from sklearn.cluster import SpectralClustering, AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 
-from kmeans import KMeans, display_kmeans_results
+from kmeans import KMeansClustering, display_kmeans_results
 from plotting import plot_clusters
 
 
-def kmeans(df, L, metric, averaging='mean', min_cluster_size=10):
-    """
-    Run the clustering process on the given data using the K-means algorithm and display the results.
+def kmeans_clustering(df, L, metric, averaging='mean', min_cluster_size=0, verbose=False, plots=True):
+    if verbose:
+        print(f"\nPerforming K-means clustering for L={L} usign metric={metric}")
 
-    :param df: The data to cluster (as a pandas DataFrame)
-    :param L: The number of clusters to create
-    :param metric: The distance metric to use
-    :param averaging: The center averaging method to use
-    :param min_cluster_size: The minimum size of a cluster
-    """
-    print(f"\n--------- K-means clustering: L={L}, metric={metric.__name__} ---------")
-
-    # Initialize K-means and fit the data
-    km = KMeans(
+    # Perform K-means clustering
+    kmeans = KMeansClustering(
         metric=metric,
         k=L,
         # random_state=1,
         init='k-means++',
         # log_level=1,
-        max_iter=30,
+        max_iter=30,  # results don't seem to improve beyond 30 iterations
         averaging=averaging
     )
-    km.fit(df)
-    clusters = km.labels
-    _merge_small_clusters(km.X, clusters, metric, min_cluster_size)
+    clusters = kmeans.fit_predict(df)
+
+    # Merge small clusters
+    if min_cluster_size > 0:
+        _merge_small_clusters(clusters, min_cluster_size, data=kmeans.X, metric=metric)
 
     # Check the sizes of the clusters
     unique, cluster_sizes = np.unique(clusters, return_counts=True)
     print("K-means clusters:", dict(zip(unique, cluster_sizes.tolist())))
 
+    # Display clustering results
+    if verbose:
+        display_kmeans_results(kmeans)
+
     # Plot the clusters
-    title = f"K-means clusters for L={L} using {metric.__name__}"
-    plot_clusters(km.X, clusters, title, km.cluster_centers)
-
-    display_kmeans_results(km)
-
-    return clusters
-
-
-def agglomerative_clustering(data, L, metric, dist_matrix, linkage_method, min_cluster_size=10):
-    print(f"\nPerforming agglomerative clustering with {linkage_method} linkage...")
-    Z = linkage(dist_matrix, method=linkage_method)
-
-    # Plot dendrogram
-    plt.figure(figsize=(10, 7))
-    dendrogram(Z)
-    plt.title('Dendrogram for Agglomerative Clustering')
-    plt.xlabel('Users')
-    plt.ylabel(f'{linkage_method.capitalize()} Distance')
-    plt.show()
-
-    # Create clusters
-    clusters = fcluster(Z, t=0.9999, criterion='distance')
-    unique, counts = np.unique(clusters, return_counts=True)
-    print(f"Clusters formed: {len(unique)}")
-    # print("Cluster sizes:", dict(zip(unique, counts)))
-    print("Sorted cluster sizes:", sorted(counts, key=lambda x: x, reverse=True))
-
-    # Merge clusters
-    print("Merging small clusters...")
-    clusters = _merge_small_clusters(data, clusters, metric, min_cluster_size)
-    unique, counts = np.unique(clusters, return_counts=True)
-    print(f"Merged clusters: {len(unique)}")
-    # print("Merged cluster sizes:", dict(zip(unique, counts)))
-    print("Sorted merged cluster sizes:", sorted(counts, key=lambda x: x, reverse=True))
+    if plots:
+        title = f"K-means clusters for L={L} using {metric.__name__}"
+        plot_clusters(kmeans.X, clusters, title, kmeans.cluster_centers)
 
     return clusters
 
 
-def spectral_clustering(dist_matrix, L):
+def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False, plots=False):
+    if verbose:
+        print("\nPerforming Spectral Clustering...")
+
     # Convert to an affinity matrix using the RBF kernel
-    delta = 1.0  # adjust delta based on the scale of the distances
     affinity_matrix = np.exp(-dist_matrix ** 2 / (2. * delta ** 2))
 
     # Perform spectral clustering
-    print("\nPerforming Spectral Clustering...")
-    spectral_clustering = SpectralClustering(
+    spectral = SpectralClustering(
         n_clusters=L,
         affinity='precomputed',
         assign_labels='kmeans',  # 'kmeans' commonly used, can also try 'discretize'
         random_state=42
     )
-    clusters = spectral_clustering.fit_predict(affinity_matrix)
+    clusters = spectral.fit_predict(affinity_matrix)
+
+    # Merge small clusters
+    if min_cluster_size > 0:
+        clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=verbose)
 
     # Evaluate the clustering
-    silhouette_avg = silhouette_score(dist_matrix, clusters, metric='precomputed')
-    print(f"\nSilhouette Score: {silhouette_avg}")
+    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
+
+    # Plot results
+    if plots:
+        _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
+
+    return clusters, silhouette_score_
+
+
+def agglomerative_clustering(dist_matrix, L, linkage, min_cluster_size=10, verbose=False, plots=False):
+    if verbose:
+        print("\nPerforming Agglomerative Clustering...")
+
+    # Perform agglomerative clustering
+    clustering = AgglomerativeClustering(n_clusters=L, metric='precomputed', linkage=linkage)
+    clusters = clustering.fit_predict(dist_matrix)
+
+    # Merge small clusters
+    if min_cluster_size > 0:
+        clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=verbose)
+
+    # Evaluate the clustering
+    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
+
+    # Plot results
+    if plots:
+        _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
+
+    return clusters, silhouette_score_
+
+
+def _evaluate_clustering(clusters, dist_matrix, verbose=False):
+    """Evaluate the clustering using silhouette score and print cluster distribution."""
+    silhouette_score_ = silhouette_score(dist_matrix, clusters, metric='precomputed')
 
     # Cluster Size Distribution
     unique, counts = np.unique(clusters, return_counts=True)
     cluster_distribution = dict(zip(unique, counts))
 
-    print("\nCluster Size Distribution:")
-    for cluster, size in cluster_distribution.items():
-        print(f"Cluster {cluster}: {size} users")
+    if verbose:
+        print(f"\nSilhouette Score: {silhouette_score_}")
+        print("\nCluster Size Distribution:")
+        for cluster, size in cluster_distribution.items():
+            print(f"Cluster {cluster}: {size} users")
 
-    # Plot the clusters
+    return silhouette_score_, unique, counts
+
+
+def _plot_cluster_sizes(unique, counts, title):
+    """Plot the cluster size distribution."""
     plt.bar(unique, counts)
     plt.xlabel('Cluster Label')
     plt.ylabel('Cluster Size')
-    plt.title('Cluster Size Distribution')
+    plt.title(title)
     plt.show()
 
-    return clusters
 
+def _merge_small_clusters(clusters, min_cluster_size, dist_matrix=None, data=None, metric=None, verbose=False):
+    """
+    Merges small clusters into the nearest larger cluster based on a distance metric or precomputed distance matrix.
 
-def _merge_small_clusters(data, clusters, metric, min_cluster_size):
-    # Identify small clusters
+    Parameters:
+    -----------
+    clusters : array-like of shape (n_samples,)
+        Array of cluster labels for each data point.
+
+    min_cluster_size : int
+        Minimum cluster size. Clusters with fewer elements than this value will be merged into a larger cluster.
+
+    dist_matrix : array-like of shape (n_samples, n_samples), optional
+        Precomputed distance matrix. If provided, this matrix is used to calculate the distances between clusters.
+
+    data : array-like of shape (n_samples, n_features), optional
+        The data points. Required if `dist_matrix` is not provided. Used in conjunction with `metric` to calculate distances.
+
+    metric : callable, optional
+        A function that computes the distance between two data points. Required if `dist_matrix` is not provided.
+
+    verbose : bool, default=False
+        If True, prints information about the merging process.
+
+    Returns:
+    --------
+    clusters : array-like of shape (n_samples,)
+        Array of cluster labels after merging small clusters.
+    """
     unique, counts = np.unique(clusters, return_counts=True)
-    small_clusters = unique[counts < min_cluster_size]
+    cluster_distribution = dict(zip(unique, counts))
+    small_clusters = [cluster for cluster, size in cluster_distribution.items() if size < min_cluster_size]
 
-    # Iterate over small clusters and merge them into the nearest larger cluster
+    if small_clusters and verbose:
+        print(f"\nMerging small clusters: {small_clusters}")
+
     for small_cluster in small_clusters:
-        # Get indices of the small cluster
         small_cluster_indices = np.where(clusters == small_cluster)[0]
+        nearest_cluster = None
+        min_avg_distance = float('inf')
 
-        # Compute distance to all other clusters
-        large_cluster_indices = np.where(~np.isin(clusters, small_clusters))[0]
-        large_cluster_labels = clusters[large_cluster_indices]
+        for other_cluster in unique:
+            if other_cluster == small_cluster or other_cluster in small_clusters:
+                continue
+            other_cluster_indices = np.where(clusters == other_cluster)[0]
 
-        # Find the nearest larger cluster
-        for i in small_cluster_indices:
-            min_distance = float('inf')
-            nearest_large_cluster = None
+            if dist_matrix is not None:
+                # Calculate average distance using the distance matrix
+                avg_distance = np.mean(dist_matrix[np.ix_(small_cluster_indices, other_cluster_indices)])
+            else:
+                # Calculate average distance using the metric function
+                avg_distances = [metric(data[i], data[j]) for i in small_cluster_indices for j in other_cluster_indices]
+                avg_distance = np.mean(avg_distances)
 
-            for j, large_cluster_index in enumerate(large_cluster_indices):
-                distance = metric(data[i], data[large_cluster_index])
-                if distance < min_distance:
-                    min_distance = distance
-                    nearest_large_cluster = large_cluster_labels[j]
+            if avg_distance < min_avg_distance:
+                min_avg_distance = avg_distance
+                nearest_cluster = other_cluster
 
-            # Reassign the small cluster point to the nearest large cluster
-            clusters[i] = nearest_large_cluster
+        if nearest_cluster is not None:
+            clusters[small_cluster_indices] = nearest_cluster
+
+    # Remove empty clusters and reindex labels
+    unique, counts = np.unique(clusters, return_counts=True)
+    reindex_map = {old_label: new_label for new_label, old_label in enumerate(unique)}
+    clusters = np.array([reindex_map[label] for label in clusters])
 
     return clusters

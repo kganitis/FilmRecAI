@@ -3,10 +3,11 @@ from sklearn.utils.extmath import stable_cumsum
 from sklearn.utils.validation import check_array, check_random_state
 from tqdm import tqdm
 
+from metrics import euclidean_distance_generalized, cosine_distance_generalized, jaccard_distance
 from logger import Logger
 
 
-class KMeans:
+class KMeansClustering:
     """
     K-means clustering implementation based on scikit-learn's KMeans,
     with several simplifications and customizations.
@@ -60,8 +61,17 @@ class KMeans:
     tol : float, default=1e-4
         Relative tolerance in regard to inertia to declare convergence.
 
-    metric : callable
-        What distance metric to use. The function should take two arrays as input and return a float.
+    metric : str or callable, default='euclidean_generalized'
+        The distance metric to use.
+        If a callable, it should take two arrays and return the distance between them.
+            * 'euclidean_generalized':
+            the generalized Euclidean distance between two points.
+
+            * 'cosine_generalized':
+            the generalized cosine distance between two points.
+
+            * 'jaccard':
+            the Jaccard distance between two points.
 
     averaging : {'mean', 'nonzero'}, default='mean'
         Method for averaging the cluster centers after each iteration:
@@ -96,19 +106,52 @@ class KMeans:
         Number of iterations run.
     """
 
-    def __init__(self, metric: callable, k=5, init='random', n_init=10, max_iter=100, tol=1e-4,
+    def __init__(self, metric='euclidean_generalized', k=5, init='random', n_init=10, max_iter=100, tol=1e-4,
                  random_state=None, averaging='mean', log_level=Logger.WARNING):
         self.n_clusters = k
         self.init = init
         self.n_init = n_init
         self.max_iter = max_iter
         self.tol = tol
-        self.metric = metric
+        self.metric = self.__validate_metric(metric)
         self.averaging = averaging
         if random_state is None:
             random_state = np.random.randint(100)
         self.random_state = check_random_state(random_state)
         self.logger = Logger(log_level)
+
+    @staticmethod
+    def __validate_metric(metric):
+        """
+        Validate the metric parameter.
+
+        Raises
+        ------
+        ValueError
+            If the metric is not a valid string or a valid distance function.
+        """
+        if isinstance(metric, str):
+            if metric == 'euclidean_generalized':
+                return euclidean_distance_generalized
+            elif metric == 'cosine_generalized':
+                return cosine_distance_generalized
+            elif metric == 'jaccard':
+                return jaccard_distance
+            else:
+                raise ValueError(f"Unknown metric: {metric}")
+        elif not callable(metric):
+            raise ValueError("The metric parameter must be a string or a callable")
+        else:
+            # Check if the callable is a function accepting two arrays
+            try:
+                d = metric(np.zeros(2), np.zeros(2))
+            except Exception as e:
+                raise ValueError(f"The metric function is not a valid distance function: {e}")
+            # Check if the callable returns a number
+            if not isinstance(d, (int, float)):
+                raise ValueError("The distance function must return a number")
+
+            return metric
 
     def __prepare_data(self, X):
         """
@@ -199,6 +242,22 @@ class KMeans:
 
         return centers
 
+    def fit_predict(self, X):
+        """
+        Compute cluster centers and predict cluster index for each sample.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Training instances to cluster.
+
+        Returns
+        -------
+        labels : ndarray of shape (n_samples,)
+            Index of the cluster each sample belongs to.
+        """
+        return self.fit(X).labels
+
     def fit(self, X):
         """
         Computes k-means clustering.
@@ -210,8 +269,8 @@ class KMeans:
 
         Returns
         -------
-        self : KMeans
-            Fitted instance of KMeans.
+        self : KMeansClustering
+            Fitted instance of KMeansClustering.
         """
         X = self.__prepare_data(X)
 
@@ -570,10 +629,10 @@ class KMeans:
                 self.__log(f"Non-zero count: {n_non_zero}", log_level)
 
 
-def display_kmeans_results(km: KMeans):
+def display_kmeans_results(km: KMeansClustering):
     """
     Print detailed K-means clustering results.
-    :param km: Fitted instance of KMeans
+    :param km: Fitted instance of KMeansClustering
     """
     print()
     print(f"INITIAL PARAMETERS")
