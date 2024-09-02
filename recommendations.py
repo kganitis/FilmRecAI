@@ -170,6 +170,50 @@ def train_and_evaluate(clusters, num_clusters, cluster_sizes, size_threshold, bi
     return results
 
 
+def get_k_nearest_neighbors(k, user_idx, dist_matrix):
+    """
+    Get k nearest neighbors of a user based on the distance matrix.
+    """
+    distances = dist_matrix[user_idx]
+    nearest_neighbors = np.argsort(distances)[:k + 1]
+    return nearest_neighbors[1:]
+
+
+def prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix, k, test_size):
+    """
+    Prepare the feature vectors and labels for the users in a cluster.
+    """
+    feature_vectors = []
+    labels = []
+
+    for user_idx in user_indices:
+        neighbors = get_k_nearest_neighbors(k, user_idx, dist_matrix)
+        label = binary_ratings[user_idx]
+        feature_vector = np.concatenate([binary_ratings[neighbor] for neighbor in neighbors], axis=0)
+        feature_vectors.append(feature_vector)
+        labels.append(label)
+
+    X = np.array(feature_vectors)
+    y = np.array(labels)
+
+    return train_test_split(X, y, test_size=test_size)
+
+
+def create_neural_network(hidden_layer_sizes, activation, dropout_rate, input_dim, output_dim):
+    """
+    Creates and returns a neural network model.
+    """
+    model = models.Sequential()
+    model.add(layers.Input(shape=(input_dim,)))
+
+    for units in hidden_layer_sizes:
+        model.add(layers.Dense(units, activation=activation))
+        model.add(layers.Dropout(dropout_rate))
+
+    model.add(layers.Dense(output_dim, activation='sigmoid'))
+    return model
+
+
 def train_model_for_cluster(cluster_label, clusters, binary_ratings, dist_matrix, k, test_size, hidden_layer_units,
                             activation, dropout_rate, learning_rate, epochs, batch_size, patience,
                             large_cluster_threshold, size_threshold, verbose):
@@ -227,56 +271,12 @@ def train_model_for_cluster(cluster_label, clusters, binary_ratings, dist_matrix
     }
 
 
-def create_neural_network(hidden_layer_sizes, activation, dropout_rate, input_dim, output_dim):
-    """
-    Creates and returns a neural network model.
-    """
-    model = models.Sequential()
-    model.add(layers.Input(shape=(input_dim,)))
-
-    for units in hidden_layer_sizes:
-        model.add(layers.Dense(units, activation=activation))
-        model.add(layers.Dropout(dropout_rate))
-
-    model.add(layers.Dense(output_dim, activation='sigmoid'))
-    return model
-
-
 def evaluate_model(model, X, y):
     """
     Evaluates the model on given data and returns accuracy, precision, recall, and AUC.
     """
     metrics = model.evaluate(X, y, verbose=0)
     return metrics[1], metrics[2], metrics[3], metrics[4]
-
-
-def get_k_nearest_neighbors(k, user_idx, dist_matrix):
-    """
-    Get k nearest neighbors of a user based on the distance matrix.
-    """
-    distances = dist_matrix[user_idx]
-    nearest_neighbors = np.argsort(distances)[:k + 1]
-    return nearest_neighbors[1:]
-
-
-def prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix, k, test_size):
-    """
-    Prepare the feature vectors and labels for the users in a cluster.
-    """
-    feature_vectors = []
-    labels = []
-
-    for user_idx in user_indices:
-        neighbors = get_k_nearest_neighbors(k, user_idx, dist_matrix)
-        label = binary_ratings[user_idx]
-        feature_vector = np.concatenate([binary_ratings[neighbor] for neighbor in neighbors], axis=0)
-        feature_vectors.append(feature_vector)
-        labels.append(label)
-
-    X = np.array(feature_vectors)
-    y = np.array(labels)
-
-    return train_test_split(X, y, test_size=test_size)
 
 
 def plot_results(results_df):
