@@ -6,6 +6,7 @@ from keras.src.optimizers import Adam
 from matplotlib import pyplot as plt
 from sklearn.metrics import pairwise_distances
 from sklearn.model_selection import train_test_split
+from keras import metrics
 
 import clustering as cl
 
@@ -15,10 +16,10 @@ def run_movie_recommendation_pipeline(ratings_df,
                                       clustering_method='agglomerative',
                                       num_clusters=30,
                                       linkage_method='average',
-                                      min_cluster_size=500,
+                                      min_cluster_size=1000,
                                       large_cluster_threshold=0.1667,
                                       # KNN and Train-Test Split parameters
-                                      k=5,
+                                      k=10,
                                       test_size=0.3,
                                       # Model parameters
                                       hidden_layer_sizes=(512, 256, 128,),
@@ -27,8 +28,10 @@ def run_movie_recommendation_pipeline(ratings_df,
                                       learning_rate=0.001,
                                       # Training parameters
                                       epochs=200,
-                                      batch_size=64,
-                                      early_stopping_patience=40,
+                                      batch_size=32,
+                                      patience=40,
+                                      # Evaluation parameters
+                                      bin_class_threshold=0.5,  # other values are bugged at the moment
                                       # Output control
                                       verbose=True,
                                       show_plots=True):
@@ -62,7 +65,10 @@ def run_movie_recommendation_pipeline(ratings_df,
         # Training parameters
         epochs (int): Number of epochs for model training.
         batch_size (int): Batch size for model training.
-        early_stopping_patience (int): Number of epochs with no improvement before stopping training.
+        patience (int): Number of epochs with no improvement before stopping training.
+
+        # Evaluation parameters
+        bin_class_threshold (float): The binary classification threshold for model evaluation.
 
         # Output control
         verbose (bool): Whether to print progress information.
@@ -81,13 +87,13 @@ def run_movie_recommendation_pipeline(ratings_df,
     # Perform clustering on the distance matrix
     clusters, silhouette_score, num_clusters, cluster_sizes, size_threshold = perform_clustering(
         clustering_method, distance_matrix, num_clusters, linkage_method,
-        min_cluster_size, large_cluster_threshold, verbose, plots=False)
+        min_cluster_size, large_cluster_threshold, verbose, show_plots)
 
     # Train and evaluate a model for each cluster
     results = train_and_evaluate(
         clusters, num_clusters, cluster_sizes, size_threshold, binary_ratings, distance_matrix,
         k, test_size, hidden_layer_sizes, activation_function, dropout_rate,
-        learning_rate, epochs, batch_size, early_stopping_patience, large_cluster_threshold, verbose)
+        learning_rate, epochs, batch_size, patience, bin_class_threshold, large_cluster_threshold, verbose)
 
     results_df = pd.DataFrame(results)
 
@@ -133,7 +139,7 @@ def perform_clustering(method, dist_matrix, k, linkage, min_size, large_cluster_
 
 def train_and_evaluate(clusters, num_clusters, cluster_sizes, size_threshold, binary_ratings, dist_matrix,
                        k, test_size, hidden_layer_sizes, activation, dropout_rate,
-                       learning_rate, epochs, batch_size, patience, large_cluster_threshold, verbose):
+                       learning_rate, epochs, batch_size, patience, bin_class_threshold, large_cluster_threshold, verbose):
     """
     Train and evaluate a model for each cluster.
     """
@@ -146,7 +152,7 @@ def train_and_evaluate(clusters, num_clusters, cluster_sizes, size_threshold, bi
         cluster_results = train_model_for_cluster(
             cluster_label, clusters, binary_ratings, dist_matrix,
             k, test_size, hidden_layer_sizes, activation,
-            dropout_rate, learning_rate, epochs, batch_size, patience,
+            dropout_rate, learning_rate, epochs, batch_size, patience, bin_class_threshold,
             large_cluster_threshold, size_threshold, verbose)
 
         # Store the results for each cluster
@@ -215,7 +221,7 @@ def create_neural_network(hidden_layer_sizes, activation, dropout_rate, input_di
 
 
 def train_model_for_cluster(cluster_label, clusters, binary_ratings, dist_matrix, k, test_size, hidden_layer_units,
-                            activation, dropout_rate, learning_rate, epochs, batch_size, patience,
+                            activation, dropout_rate, learning_rate, epochs, batch_size, patience, bin_class_threshold,
                             large_cluster_threshold, size_threshold, verbose):
     """
     Train a neural network model for a specific cluster.
@@ -253,8 +259,8 @@ def train_model_for_cluster(cluster_label, clusters, binary_ratings, dist_matrix
               callbacks=[early_stopping], validation_data=(X_test, y_test), verbose=1)
 
     # Evaluate the model on training and test data
-    train_accuracy, train_precision, train_recall, train_auc = evaluate_model(model, X_train, y_train)
-    test_accuracy, test_precision, test_recall, test_auc = evaluate_model(model, X_test, y_test)
+    train_accuracy, train_precision, train_recall, train_auc = evaluate_model(model, X_train, y_train, bin_class_threshold)
+    test_accuracy, test_precision, test_recall, test_auc = evaluate_model(model, X_test, y_test, bin_class_threshold)
 
     return {
         "train_accuracy": train_accuracy,
@@ -271,12 +277,38 @@ def train_model_for_cluster(cluster_label, clusters, binary_ratings, dist_matrix
     }
 
 
-def evaluate_model(model, X, y):
+def evaluate_model(model, X, y, threshold=0.5):
     """
     Evaluates the model on given data and returns accuracy, precision, recall, and AUC.
     """
-    metrics = model.evaluate(X, y, verbose=0)
-    return metrics[1], metrics[2], metrics[3], metrics[4]
+    if threshold != 0.5:
+        return evaluate_model_with_threshold(model, X, y, threshold)
+    else:
+        metric_results = model.evaluate(X, y, verbose=0)
+        return metric_results[1], metric_results[2], metric_results[3], metric_results[4]
+
+
+def evaluate_model_with_threshold(model, X, y, threshold=0.5):
+    """
+    Evaluates the model on given data and returns accuracy, precision, recall, and AUC,
+    applying a custom threshold for classification.
+    """
+    # Get the predicted probabilities
+    predicted_probs = model.predict(X)
+
+    # Apply the threshold to get binary predictions
+    predicted_classes = (predicted_probs >= threshold).astype(int)
+
+    # Calculate accuracy
+    accuracy = np.mean(predicted_classes == y)
+
+    # Calculate precision, recall, and AUC
+    # TODO find where these functions are implemented
+    precision = metrics.precision_score(y, predicted_classes)
+    recall = metrics.recall_score(y, predicted_classes)
+    auc = metrics.roc_auc_score(y, predicted_probs)
+
+    return accuracy, precision, recall, auc
 
 
 def plot_results(results_df):

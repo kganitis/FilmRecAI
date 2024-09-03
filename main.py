@@ -10,7 +10,7 @@ MEDIUM = 'medium'  # for testing
 FAST = 'fast'  # default; for quick results
 VERY_FAST = 'very fast'  # for instant results
 
-EXEC_SPEED = VERY_FAST  # Set the execution speed here
+EXEC_SPEED = SLOW  # Set the execution speed here
 
 
 def run(R_min_kmeans, R_min, R_max, M_min):
