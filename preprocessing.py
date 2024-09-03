@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-def run_for_kmeans_clustering_pipeline(R_min, R_max, M_min):
+def run_kmeans_clustering_pipeline(R_min, R_max, M_min):
     """
     Run the preprocessing pipeline specifically configured for K-means clustering.
 

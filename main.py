@@ -10,7 +10,10 @@ MEDIUM = 'medium'  # for testing
 FAST = 'fast'  # default; for quick results
 VERY_FAST = 'very fast'  # for instant results
 
-EXEC_SPEED = SLOW  # Set the execution speed here
+EXEC_SPEED = FAST  # Set the execution speed here
+
+RUN_KMEANS_CLUSTERING_PIPELINE = False
+RUN_RECOMMENDATIONS_PIPELINE = True
 
 
 def run(R_min_kmeans, R_min, R_max, M_min):
@@ -29,23 +32,20 @@ def run(R_min_kmeans, R_min, R_max, M_min):
     3. Runs the preprocessing pipeline for Jaccard clustering.
     4. Executes the movie recommendation pipeline using the processed data.
     """
-    # Run data preprocessing for K-means clustering
-    ratings_df = preprocessing.run_for_kmeans_clustering_pipeline(R_min=R_min_kmeans, R_max=200, M_min=50)
+    if RUN_KMEANS_CLUSTERING_PIPELINE:
+        ratings_df = preprocessing.run_kmeans_clustering_pipeline(R_min=R_min_kmeans, R_max=200, M_min=50)
 
-    # Define cluster sizes and metrics for K-means clustering
-    L_values = [5, 7, 10, 15, 20]
-    metrics = ['euclidean_generalized', 'cosine_generalized']
+        L_values = [5, 7, 10, 15, 20]
+        metrics = ['euclidean_generalized', 'cosine_generalized']
 
-    # Perform K-means clustering with the specified metrics and L values
-    for L in L_values:
-        for metric in metrics:
-            clustering.kmeans_clustering(ratings_df, L, metric)
+        # Perform K-means clustering with the specified metrics and L values
+        for L in L_values:
+            for metric in metrics:
+                clustering.kmeans_clustering(ratings_df, L, metric)
 
-    # Run data preprocessing for Jaccard clustering
-    ratings_df = preprocessing.run_jaccard_clustering_pipeline(R_min, R_max, M_min)
-
-    # Run the movie recommendation pipeline
-    recommendations.run_movie_recommendation_pipeline(ratings_df)
+    if RUN_RECOMMENDATIONS_PIPELINE:
+        ratings_df = preprocessing.run_jaccard_clustering_pipeline(R_min, R_max, M_min)
+        recommendations.run_recommendation_pipeline(ratings_df)
 
 
 def get_parameters_for_speed(speed=FAST):

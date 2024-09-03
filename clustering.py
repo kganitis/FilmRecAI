@@ -39,12 +39,12 @@ def kmeans_clustering(df, L, metric, averaging='mean', verbose=True, plots=True)
     return clusters
 
 
-def agglomerative_clustering(dist_matrix, L, linkage, min_cluster_size=10, verbose=False, plots=False):
+def agglomerative_clustering(dist_matrix, L, min_cluster_size=10, verbose=False, plots=False):
     if verbose:
         print("\nPerforming Agglomerative Clustering...")
 
     # Perform agglomerative clustering
-    clustering = AgglomerativeClustering(n_clusters=L, metric='precomputed', linkage=linkage)
+    clustering = AgglomerativeClustering(n_clusters=L, metric='precomputed', linkage='average')
     clusters = clustering.fit_predict(dist_matrix)
 
     # Merge small clusters
@@ -52,7 +52,7 @@ def agglomerative_clustering(dist_matrix, L, linkage, min_cluster_size=10, verbo
         clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=False)
 
     # Evaluate the clustering
-    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
+    silhouette_score_, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
 
     # Plot results
     if plots:
@@ -82,7 +82,7 @@ def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False
         clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=verbose)
 
     # Evaluate the clustering
-    silhouette_score_, unique, counts = _evaluate_clustering(clusters, dist_matrix, verbose)
+    silhouette_score_, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
 
     # Plot results
     if plots:
@@ -91,13 +91,14 @@ def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False
     return clusters, silhouette_score_
 
 
-def _evaluate_clustering(clusters, dist_matrix, verbose=False):
+def _evaluate_clustering(dist_matrix, clusters, verbose=False):
     """Evaluate the clustering using silhouette score and print cluster distribution."""
-    silhouette_score_ = silhouette_score(dist_matrix, clusters, metric='precomputed')
 
     # Cluster Size Distribution
     unique, counts = np.unique(clusters, return_counts=True)
     cluster_distribution = dict(zip(unique, counts))
+
+    silhouette_score_ = silhouette_score(dist_matrix, clusters, metric='precomputed')
 
     if verbose:
         # print(f"\nSilhouette Score: {silhouette_score_}")
