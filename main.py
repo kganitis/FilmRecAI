@@ -42,23 +42,25 @@ def run(parameters):
         recommendations.run_recommendation_pipeline(ratings_df)
 
 
-def get_parameters_for_speed(speed=FAST):
+def get_parameters_for_speed(speed='fast'):
     """
     Retrieves the preprocessing parameters based on the specified execution speed.
     """
     speed = speed.lower()
-    if speed == MEDIUM:
-        R_min_1, R_max_1, M_min_1 = 100, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 42
-    elif speed == SLOW:
+    if speed == 'slow':
         R_min_1, R_max_1, M_min_1 = 50, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 40
-    elif speed == MAX:
-        R_min_1, R_max_1, M_min_1 = 150, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 46
-    else:  # FAST
+    elif speed == 'medium':
+        R_min_1, R_max_1, M_min_1 = 100, 200, 50
+        R_min_2, R_max_2, M_min_2 = 5, 15, 42
+    elif speed == 'fast':
         R_min_1, R_max_1, M_min_1 = 125, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 44
+    elif speed == 'max':
+        R_min_1, R_max_1, M_min_1 = 150, 200, 50
+        R_min_2, R_max_2, M_min_2 = 5, 15, 46
+    else:
+        raise ValueError(f"Invalid execution speed. Please use one of the following: slow, medium, fast, max.")
 
     return (R_min_1, R_max_1, M_min_1), (R_min_2, R_max_2, M_min_2)
 
