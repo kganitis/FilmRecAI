@@ -4,9 +4,9 @@ import recommendations
 
 # Constants for execution speed
 SLOW = 'slow'  # for final submission
-MEDIUM = 'medium'  # for testing
+MEDIUM = 'medium'  # for performance testing
 FAST = 'fast'  # default; for quick results
-VERY_FAST = 'very fast'  # for instant results
+MAX = 'max'  # for error testing
 
 EXEC_SPEED = FAST  # Set the execution speed here
 
@@ -45,17 +45,6 @@ def run(parameters):
 def get_parameters_for_speed(speed=FAST):
     """
     Retrieves the preprocessing parameters based on the specified execution speed.
-
-    Args:
-        speed (str): The execution speed, which determines the parameter values.
-                     Can be 'slow', 'medium', 'fast', or 'very fast'.
-
-    Returns:
-        tuple: A tuple containing four integers:
-            * R_min_km: Minimum number of user ratings per movie required for K-means clustering.
-            * R_min_2: Minimum number of user ratings per movie required in the recommendations model.
-            * R_max_2: Maximum number of user ratings per movie considered for the recommendations model.
-            * M_min_2: Minimum number of movies considered for the recommendations model.
     """
     speed = speed.lower()
     if speed == MEDIUM:
@@ -64,7 +53,7 @@ def get_parameters_for_speed(speed=FAST):
     elif speed == SLOW:
         R_min_1, R_max_1, M_min_1 = 50, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 40
-    elif speed == VERY_FAST:
+    elif speed == MAX:
         R_min_1, R_max_1, M_min_1 = 150, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 46
     else:  # FAST
