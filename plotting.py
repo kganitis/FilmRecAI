@@ -1,3 +1,5 @@
+import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
@@ -100,4 +102,44 @@ def _plot_clusters_tsne(data, labels, title):
     plt.xlabel('Component 1')
     plt.ylabel('Component 2')
     plt.colorbar(label='Cluster Label')
+    plt.show()
+
+
+def plot_training_results(results_df, metrics):
+    """
+    Plots the results for each metric by cluster, dynamically adjusting the number of rows and columns
+    based on the number of metrics, while fitting the plots to a (7, 10) figsize.
+    """
+    cluster_labels = results_df['Cluster'].values
+    num_metrics = len(metrics)
+
+    # Calculate the optimal number of rows and columns
+    num_cols = math.ceil(math.sqrt(num_metrics))
+    num_rows = math.ceil(num_metrics / num_cols)
+
+    # Create the figure and axes with dynamic rows and columns
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(7, 10))
+
+    # Flatten axs for easy iteration (handle cases where it's a 2D array)
+    if num_rows * num_cols > 1:
+        axs = axs.flatten()
+    else:
+        axs = [axs]
+
+    for i, metric in enumerate(metrics):
+        ax = axs[i]
+        ax.bar(cluster_labels, results_df[f'Train {metric}'], alpha=0.6, label='Train')
+        ax.bar(cluster_labels, results_df[f'Test {metric}'], alpha=0.6, label='Test')
+        ax.set_xticks(cluster_labels)
+        ax.set_xticklabels(cluster_labels)
+        ax.set_title(f'{metric} by Cluster')
+        ax.set_xlabel('Cluster')
+        ax.set_ylabel(metric)
+        ax.legend()
+
+    # Hide any unused subplots
+    for i in range(num_metrics, num_rows * num_cols):
+        fig.delaxes(axs[i])
+
+    plt.tight_layout()
     plt.show()

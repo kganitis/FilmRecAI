@@ -7,9 +7,8 @@ from kmeans import KMeansClustering, display_kmeans_results
 from plotting import plot_clusters
 
 
-def kmeans_clustering(df, L, metric, averaging='mean', verbose=True, plots=True):
-    if verbose:
-        print(f"\nPerforming K-means clustering for L={L} using metric={metric}")
+def kmeans_clustering(df, L, metric, averaging='mean', verbose=False, plots=True):
+    print(f"\nPerforming K-means clustering for L={L} using metric={metric}")
 
     # Perform K-means clustering
     kmeans = KMeansClustering(
@@ -39,7 +38,7 @@ def kmeans_clustering(df, L, metric, averaging='mean', verbose=True, plots=True)
     return clusters
 
 
-def agglomerative_clustering(dist_matrix, L, min_cluster_size=10, verbose=False, plots=False):
+def agglomerative_clustering(dist_matrix, L, min_cluster_size=10, verbose=True, plots=True):
     if verbose:
         print("\nPerforming Agglomerative Clustering...")
 
@@ -52,16 +51,16 @@ def agglomerative_clustering(dist_matrix, L, min_cluster_size=10, verbose=False,
         clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=False)
 
     # Evaluate the clustering
-    silhouette_score_, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
+    _, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
 
     # Plot results
     if plots:
         _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
 
-    return clusters, silhouette_score_
+    return clusters
 
 
-def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False, plots=False):
+def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=True, plots=True):
     if verbose:
         print("\nPerforming Spectral Clustering...")
 
@@ -82,13 +81,13 @@ def spectral_clustering(dist_matrix, L, delta, min_cluster_size=0, verbose=False
         clusters = _merge_small_clusters(clusters, min_cluster_size, dist_matrix=dist_matrix, verbose=verbose)
 
     # Evaluate the clustering
-    silhouette_score_, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
+    _, unique, counts = _evaluate_clustering(dist_matrix, clusters, verbose)
 
     # Plot results
     if plots:
         _plot_cluster_sizes(unique, counts, 'Cluster Size Distribution')
 
-    return clusters, silhouette_score_
+    return clusters
 
 
 def _evaluate_clustering(dist_matrix, clusters, verbose=False):

@@ -3,37 +3,17 @@ import numpy as np
 import pandas as pd
 
 
-def run_kmeans_clustering_pipeline(R_min, R_max, M_min):
-    """
-    Run the preprocessing pipeline specifically configured for K-means clustering.
-
-    Args:
-        R_min (int): Minimum required number of ratings per user.
-        R_max (int): Maximum allowed number of ratings per user.
-        M_min (int): Minimum required number of ratings per movie.
-
-    Returns:
-        pd.DataFrame: User preference vectors as a pandas DataFrame.
-    """
+def run_for_kmeans_clustering_pipeline(R_min, R_max, M_min):
+    """Run the preprocessing pipeline specifically configured for K-means clustering."""
     return _run(R_min, R_max, M_min, display_graphs=True, refiltering=False)
 
 
-def run_jaccard_clustering_pipeline(R_min, R_max, M_min):
-    """
-    Run the preprocessing pipeline specifically configured for Jaccard clustering.
-
-    Args:
-        R_min (int): Minimum required number of ratings per user.
-        R_max (int): Maximum allowed number of ratings per user.
-        M_min (int): Minimum required number of ratings per movie.
-
-    Returns:
-        pd.DataFrame: User preference vectors as a pandas DataFrame.
-    """
+def run_for_recommendations_pipeline(R_min, R_max, M_min):
+    """Run the preprocessing pipeline specifically configured for training the recommendations ANN model."""
     return _run(R_min, R_max, M_min, display_graphs=False, refiltering=True)
 
 
-def _run(R_min: int, R_max: int, M_min: int, display_graphs: bool = True, refiltering: bool = False, days_interval: int = 90) -> pd.DataFrame:
+def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_interval=90) -> pd.DataFrame:
     """
     Preprocess the dataset to generate user preference vectors, with optional filtering and graph display.
 
