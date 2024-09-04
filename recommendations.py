@@ -57,6 +57,23 @@ def run_recommendation_pipeline(ratings_df):
     plot_training_results(results_df, config['metrics'])
 
 
+def determine_large_cluster_size_threshold(clusters):
+    """
+    Determine the size threshold for defining large clusters.
+    Training models for clusters larger than this threshold will have different hyperparameters.
+    """
+    num_clusters = len(np.unique(clusters))
+    cluster_sizes = [np.sum(clusters == label) for label in range(num_clusters)]
+
+    size_threshold = np.inf
+    if config['large_cluster_threshold'] > 0:
+        sorted_sizes = sorted(cluster_sizes)
+        threshold_index = int((1 - config['large_cluster_threshold']) * num_clusters)
+        size_threshold = sorted_sizes[threshold_index]
+
+    return size_threshold
+
+
 def get_k_nearest_neighbors(user_idx, dist_matrix):
     """
     Get k nearest neighbors of a user based on the distance matrix.
@@ -85,28 +102,13 @@ def prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix):
     return train_test_split(X, y, test_size=config['test_size'])
 
 
-def determine_large_cluster_size_threshold(clusters):
-    """
-    Determine the size threshold for defining large clusters.
-    """
-    num_clusters = len(np.unique(clusters))
-    cluster_sizes = [np.sum(clusters == label) for label in range(num_clusters)]
-
-    size_threshold = np.inf
-    if config['large_cluster_threshold'] > 0:
-        sorted_sizes = sorted(cluster_sizes)
-        threshold_index = int((1 - config['large_cluster_threshold']) * num_clusters)
-        size_threshold = sorted_sizes[threshold_index]
-
-    return size_threshold
-
-
-def determine_hidden_layers(cluster_size, size_threshold):
+def adjust_hidden_layers(cluster_size, size_threshold):
     """
     Adjust the hidden layers of the neural network for clusters larger than a given size threshold.
     """
     hidden_layers = config['hidden_layers']
-    if config['large_cluster_threshold'] > 0 and cluster_size >= size_threshold:
+    is_large_cluster = config['large_cluster_threshold'] > 0 and cluster_size >= size_threshold
+    if is_large_cluster:
         return [2 * hidden_layers[0]] + list(hidden_layers)
     return hidden_layers
 
@@ -114,6 +116,7 @@ def determine_hidden_layers(cluster_size, size_threshold):
 def create_model(hidden_layers, input_dim, output_dim):
     """
     Create a Multi-Layer Neural Network model with the specified hidden layers and input/output dimensions.
+    Does not compile or train the model.
     """
     model = models.Sequential()
     model.add(layers.Input(shape=(input_dim,)))
@@ -171,14 +174,12 @@ def train_and_evaluate(clusters, binary_ratings, dist_matrix):
 
         # Get the indices of users in the cluster
         user_indices = np.where(clusters == cluster_label)[0]
-        cluster_size = len(user_indices)
-        cluster_result = {"Cluster": cluster_label, "Size": cluster_size}
 
         # Prepare the data for training and testing
         X_train, X_test, y_train, y_test = prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix)
 
-        # Determine the hidden layers for the neural network based on the cluster size
-        hidden_layers = determine_hidden_layers(cluster_size, large_cluster_size_threshold)
+        # Adjust the hidden layers for the neural network based on the cluster size
+        hidden_layers = adjust_hidden_layers(len(user_indices), large_cluster_size_threshold)
 
         # Create the neural network model
         model = create_model(hidden_layers, X_train.shape[1], y_train.shape[1])
@@ -187,6 +188,7 @@ def train_and_evaluate(clusters, binary_ratings, dist_matrix):
         train_result = train_and_evaluate_model(model, X_train, X_test, y_train, y_test)
 
         # Update the results
+        cluster_result = {"Cluster": cluster_label, "Size": len(user_indices)}
         cluster_result.update(train_result)
         results.append(cluster_result)
 

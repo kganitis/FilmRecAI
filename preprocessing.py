@@ -1,19 +1,20 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+from plotting import plot_ratings_per_user_histogram, plot_time_ranges_histogram
 
 
 def run_for_kmeans_clustering_pipeline(R_min, R_max, M_min):
     """Run the preprocessing pipeline specifically configured for K-means clustering."""
-    return _run(R_min, R_max, M_min, display_graphs=True, refiltering=False)
+    return _run(R_min, R_max, M_min, plot_histograms=True, refiltering=False)
 
 
 def run_for_recommendations_pipeline(R_min, R_max, M_min):
     """Run the preprocessing pipeline specifically configured for training the recommendations ANN model."""
-    return _run(R_min, R_max, M_min, display_graphs=False, refiltering=True)
+    return _run(R_min, R_max, M_min, plot_histograms=False, refiltering=True)
 
 
-def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_interval=90) -> pd.DataFrame:
+def _run(R_min, R_max, M_min, plot_histograms=True, refiltering=False) -> pd.DataFrame:
     """
     Preprocess the dataset to generate user preference vectors, with optional filtering and graph display.
 
@@ -21,9 +22,8 @@ def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_inter
         R_min (int): Minimum required number of ratings per user.
         R_max (int): Maximum allowed number of ratings per user.
         M_min (int): Minimum required number of ratings per movie.
-        display_graphs (bool, optional): Whether to display histograms of the filtered data. Defaults to True.
+        plot_histograms (bool, optional): Whether to display histograms of the filtered data. Defaults to True.
         refiltering (bool, optional): Whether to apply iterative refiltering. Defaults to False.
-        days_interval (int, optional): Interval of days to group data for the histogram of time ranges. Defaults to 90.
 
     Returns:
         pd.DataFrame: A DataFrame containing user preference vectors.
@@ -48,11 +48,8 @@ def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_inter
     # Identify unique users and movies in the dataset
     unique_users = df['username'].unique()
     unique_movies = df['movie'].unique()
-    N = len(unique_users)
-    M = len(unique_movies)
-
-    print("Number of Unique Users (U):", N)
-    print("Number of Unique Movies (I):", M)
+    print("Number of Unique Users (U):", len(unique_users))
+    print("Number of Unique Movies (I):", len(unique_movies))
 
     print("\n------------- Preprocessing: Filter Data based on Number of Ratings -------------\n")
 
@@ -69,40 +66,22 @@ def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_inter
     filtered_unique_movies = filtered_df['movie'].unique()
     n = len(filtered_unique_users)
     m = len(filtered_unique_movies)
-    print("Number of Filtered Users (Û):", n)
-    print("Number of Filtered Movies (Î):", m)
+    print("Number of Filtered Users (Û):", len(filtered_unique_users))
+    print("Number of Filtered Movies (Î):", len(filtered_unique_movies))
 
     # Calculate the total number of non-zero ratings in the filtered dataset
     non_zero_ratings_count = (filtered_df['rating'] > 0).sum()
     print(f"Total number of ratings in the filtered dataset: {non_zero_ratings_count}")
 
     # Calculate the sparsity of the ratings matrix
-    total_possible_entries = len(filtered_unique_users) * len(filtered_unique_movies)
+    total_possible_entries = n * m
     sparsity = 1 - (non_zero_ratings_count / total_possible_entries)
     print(f"Sparsity of the ratings matrix: {sparsity:.4f}")
 
-    if display_graphs:
-        # Display histogram of number of ratings per user
-        ratings_per_user_filtered = filtered_df.groupby('username')['rating'].count()
-        plt.figure(figsize=(10, 5))
-        plt.hist(ratings_per_user_filtered, bins=range(R_min, R_max + 2), edgecolor='black', alpha=0.7)
-        plt.title('Number of Ratings per User (Filtered Data)')
-        plt.xlabel('Number of Ratings')
-        plt.ylabel('Number of Users')
-        plt.grid(True)
-        plt.show()
-
-        # Display histogram of time ranges for all ratings by users
-        first_rating_date = filtered_df.groupby('username')['date'].min()
-        last_rating_date = filtered_df.groupby('username')['date'].max()
-        time_ranges = (last_rating_date - first_rating_date).dt.days
-        plt.figure(figsize=(10, 5))
-        plt.hist(time_ranges, bins=range(0, max(time_ranges) + 8, days_interval), edgecolor='black', alpha=0.7)
-        plt.title('Time Ranges for All Ratings by Users (Filtered Data)')
-        plt.xlabel('Time Range (days)')
-        plt.ylabel('Number of Users')
-        plt.grid(True)
-        plt.show()
+    # Display histograms
+    if plot_histograms:
+        plot_ratings_per_user_histogram(filtered_df, R_min, R_max)
+        plot_time_ranges_histogram(filtered_df, days_interval=90)
 
     print("\n------- Preprocessing: Generate Preference (Feature) Vectors for each User -------\n")
 
@@ -112,7 +91,9 @@ def _run(R_min, R_max, M_min, display_graphs=True, refiltering=False, days_inter
     # Fill missing ratings with 0
     ratings_df.fillna(0, inplace=True)
 
-    print(ratings_df)
+    print("Preprocessing completed successfully.")
+    print(f"Shape of the user preference matrix: {ratings_df.shape}")
+    print(ratings_df.head())
 
     return ratings_df
 
