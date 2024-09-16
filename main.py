@@ -1,101 +1,89 @@
 import argparse
 
-import pandas as pd
-
-import clustering
 import preprocessing
+import clustering
 import recommendations
-from metrics import euclidean_distance_generalized, cosine_distance_generalized
 
 # Constants for execution speed
-SLOW = 'slow'  # only for final submission
+SLOW = 'slow'  # for final submission
 MEDIUM = 'medium'  # for testing
-FAST = 'fast'  # default, for quick results
+FAST = 'fast'  # default; for quick results
+VERY_FAST = 'very fast'  # for instant results
 
-EXEC_SPEED = FAST  # set for the desired execution speed
-
-
-def run(R_min, R_max, M_min):
-    # Run data preprocessing
-    # R_min, R_max, M_min = 50, 100, 0
-    ratings_df = preprocessing.run(R_min, R_max, M_min, False)
-
-    # Run K-means clustering using the two metrics and different values of L
-    # L_values = [5, 7, 10, 15, 20]
-    # metrics = [euclidean_distance_generalized, cosine_distance_generalized]
-    # for L in L_values:
-    #     for metric in metrics:
-    #         clustering.kmeans_clustering(data, metric, L)
-
-    recommendations.run(ratings_df)
+EXEC_SPEED = SLOW  # Set the execution speed here
 
 
-def run_experiments(ratings_df):
-    # Define the parameter grid
-    L_values = [5, 15, 30, 45]  # Different values of L (number of clusters)
-    k_values = [3, 5, 7]  # Different values of k (number of neighbors)
-    test_size_values = [0.1, 0.2]  # Different values of test_size (proportion of test data)
-    hidden_layer_units_values = [
-        (256, 128),
-        (1024, 512),
-        (4096, 2048),
-    ]  # Different configurations of hidden layers
+def run(R_min_kmeans, R_min, R_max, M_min):
+    """
+    Executes the data preprocessing, clustering, and recommendation pipelines.
 
-    results = []
+    Args:
+        R_min_kmeans (int): Minimum number of ratings for users/movies used in K-means clustering preprocessing.
+        R_min (int): Minimum number of ratings required for users/movies in Jaccard clustering preprocessing.
+        R_max (int): Maximum number of ratings considered for users/movies in Jaccard clustering preprocessing.
+        M_min (int): Minimum number of movies considered for clustering in Jaccard clustering preprocessing.
 
-    # Loop over each combination of parameters
+    Steps:
+    1. Runs the preprocessing pipeline for K-means clustering.
+    2. Performs K-means clustering with different numbers of clusters (L) and two distance metrics.
+    3. Runs the preprocessing pipeline for Jaccard clustering.
+    4. Executes the movie recommendation pipeline using the processed data.
+    """
+    # Run data preprocessing for K-means clustering
+    ratings_df = preprocessing.run_for_kmeans_clustering_pipeline(R_min=R_min_kmeans, R_max=200, M_min=50)
+
+    # Define cluster sizes and metrics for K-means clustering
+    L_values = [5, 7, 10, 15, 20]
+    metrics = ['euclidean_generalized', 'cosine_generalized']
+
+    # Perform K-means clustering with the specified metrics and L values
     for L in L_values:
-        for k in k_values:
-            for test_size in test_size_values:
-                for hidden_layer_units in hidden_layer_units_values:
-                    print(f"Running with L={L}, k={k}, test_size={test_size}, hidden_layers={hidden_layer_units}")
-                    # Run the model with the current set of parameters
-                    result = recommendations.run(
-                        ratings_df,
-                        L=L,
-                        delta=5.0,
-                        k=k,
-                        test_size=test_size,
-                        hidden_layer_units=hidden_layer_units,
-                        verbose=False,
-                        plots=False
-                    )
-                    # Append the result with the current parameters
-                    result.update({
-                        "L": L,
-                        "k": k,
-                        "test_size": test_size,
-                        "hidden_layers": hidden_layer_units
-                    })
-                    results.append(result)
+        for metric in metrics:
+            clustering.kmeans_clustering(ratings_df, L, metric)
 
-                    print(result)
+    # Run data preprocessing for Jaccard clustering
+    ratings_df = preprocessing.run_jaccard_clustering_pipeline(R_min, R_max, M_min)
 
-    # Convert the results to a DataFrame for easier analysis
-    results_df = pd.DataFrame(results)
-    print("\nExperiment Results:")
-    print(results_df)
-
-    # Optionally, save the results to a CSV file for further analysis
-    results_df.to_csv('experiment_results.csv', index=False)
-
-    return results_df
+    # Run the movie recommendation pipeline
+    recommendations.run_movie_recommendation_pipeline(ratings_df)
 
 
 def get_parameters_for_speed(speed=FAST):
-    """Get parameters based on execution speed."""
+    """
+    Retrieves the preprocessing parameters based on the specified execution speed.
+
+    Args:
+        speed (str): The execution speed, which determines the parameter values. Can be 'slow', 'medium', 'fast', or 'very fast'.
+
+    Returns:
+        tuple: A tuple containing four integers:
+            - R_min_kmeans: Minimum ratings for K-means clustering preprocessing.
+            - R_min: Minimum ratings for Jaccard clustering preprocessing.
+            - R_max: Maximum ratings for Jaccard clustering preprocessing.
+            - M_min: Minimum movies considered for Jaccard clustering.
+    """
     speed = speed.lower()
     if speed == MEDIUM:
-        R_min, R_max, M_min = 50, 200, 10
+        R_min_kmeans = 100
+        R_min, R_max, M_min = 5, 15, 42
     elif speed == SLOW:
-        R_min, R_max, M_min = 50, 200, 5
+        R_min_kmeans = 50
+        R_min, R_max, M_min = 5, 15, 40
+    elif speed == VERY_FAST:
+        R_min_kmeans = 150
+        R_min, R_max, M_min = 5, 15, 46
     else:  # FAST
-        R_min, R_max, M_min = 50, 200, 17
-    return R_min, R_max, M_min
+        R_min_kmeans = 125
+        R_min, R_max, M_min = 5, 15, 44
+
+    return R_min_kmeans, R_min, R_max, M_min
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run with different execution speeds.")
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(
+        description="Run the clustering and recommendation pipelines with different execution speeds.")
+
     parser.add_argument(
         '--speed',
         type=str,
@@ -104,5 +92,8 @@ if __name__ == '__main__':
         help=f'Execution speed: slow, medium, fast (default: {EXEC_SPEED})'
     )
 
+    # Parse command-line arguments
     args = parser.parse_args()
+
+    # Run the main pipeline with parameters based on the chosen execution speed
     run(*get_parameters_for_speed(args.speed))
