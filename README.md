@@ -11,4 +11,4 @@
 ## Εκτέλεση
 
 1. Τοποθετήστε το αρχείο `dataset.npy` στο ίδιο directory με το `main.py` και τα υπόλοιπα source files.
-2. Εκτελέστε το αρχείο `main.py`.
+2. Εκτελέστε το αρχείο `main.py`.# FilmRecAI
