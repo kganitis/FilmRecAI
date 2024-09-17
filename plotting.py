@@ -84,13 +84,16 @@ def plot_cluster_sizes(unique, counts, title):
 def plot_training_results(results_df, metrics):
     """
     Plots the results for each metric by cluster,
-    dynamically adjusting the number of rows and columns based on the number of metrics.
     """
     cluster_labels = results_df['Cluster'].values
     num_metrics = len(metrics)
 
-    # Calculate the optimal number of rows and columns
-    num_cols = math.ceil(math.sqrt(num_metrics))
+    # Dynamically adjust the number of rows and columns based on the number of metrics.
+    # num_cols = math.ceil(math.sqrt(num_metrics))
+
+    # Current version has only 3 metrics, no need for dynamic adjustment
+    # Just set num_cols to 1
+    num_cols = 1
     num_rows = math.ceil(num_metrics / num_cols)
 
     # Create the figure and axes with dynamic rows and columns
