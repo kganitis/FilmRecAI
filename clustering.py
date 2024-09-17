@@ -39,7 +39,7 @@ def kmeans_clustering(df, L, metric, averaging='mean', verbose=False):
     return clusters
 
 
-def agglomerative_clustering(dist_matrix, L, min_cluster_size=10):
+def agglomerative_clustering(dist_matrix, L, min_cluster_size=1):
     """
     Perform agglomerative clustering on the given distance matrix for L clusters.
     """
