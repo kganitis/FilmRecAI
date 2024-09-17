@@ -20,7 +20,7 @@ def run(parameters):
 
     Steps:
     1. Runs the preprocessing pipeline for K-means clustering.
-    2. Performs K-means clustering with different numbers of clusters (L) and two distance metrics.
+    2. Performs K-means clustering with different numbers of clusters (L) and distance metrics.
     3. Runs the preprocessing pipeline for the recommendations model.
     4. Executes the movie recommendation pipeline using the processed data.
     """
@@ -58,7 +58,7 @@ def get_parameters_for_speed(speed='fast'):
         R_min_2, R_max_2, M_min_2 = 5, 15, 44
     elif speed == 'max':
         R_min_1, R_max_1, M_min_1 = 150, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 46
+        R_min_2, R_max_2, M_min_2 = 5, 15, 50
     else:
         raise ValueError(f"Invalid execution speed. Please use one of the following: slow, medium, fast, max.")
 
