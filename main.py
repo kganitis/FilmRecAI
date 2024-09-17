@@ -52,10 +52,10 @@ def get_parameters_for_speed(speed='fast'):
         R_min_2, R_max_2, M_min_2 = 5, 15, 40
     elif speed == 'medium':
         R_min_1, R_max_1, M_min_1 = 100, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 42
+        R_min_2, R_max_2, M_min_2 = 5, 15, 44
     elif speed == 'fast':
         R_min_1, R_max_1, M_min_1 = 125, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 44
+        R_min_2, R_max_2, M_min_2 = 5, 15, 47
     elif speed == 'max':
         R_min_1, R_max_1, M_min_1 = 150, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 50

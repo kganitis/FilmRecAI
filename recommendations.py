@@ -1,31 +1,24 @@
 import numpy as np
 import pandas as pd
 from keras import layers, models
-from keras.src.callbacks import EarlyStopping
-from keras.src.optimizers import Adam
 from keras.src.metrics import Precision, Recall
+from keras.src.optimizers import Adam
 from sklearn.metrics import pairwise_distances
 from sklearn.model_selection import train_test_split
 
 from clustering import agglomerative_clustering
+from f1_score import F1ScoreCallback, f1_score
 from plotting import plot_training_results
 
-
 config = {
-    # Agglomerative Clustering parameters
     'L': 5,  # Number of clusters to form
-    'large_cluster_threshold': 0.2,  # Threshold for defining large clusters (model adjusts for those)
-
-    # KNN and Train-Test Split parameters
     'k': 10,  # Number of neighbors for KNN feature generation
     'test_size': 0.1,  # Proportion of the dataset to include in the test split
-
-    # Neural Network Training parameters
     'hidden_layers': (8192, 4096),  # Sizes of the hidden layers in the neural network
     'metrics': [Precision(name="Precision"), Recall(name="Recall")],  # Metrics to evaluate the model
     'epochs': 50,  # Number of epochs for model training
     'learning_rate': 0.0001,  # Learning rate for model training
-    'patience': 5,  # Number of epochs with no improvement before stopping training
+    'patience': 10,  # Number of epochs with no improvement before stopping training
 }
 
 
@@ -58,23 +51,6 @@ def run_recommendation_pipeline(ratings_df):
     plot_training_results(results_df, metric_names)
 
 
-def determine_large_cluster_size_threshold(clusters):
-    """
-    Determine the size threshold for defining large clusters.
-    Training models for clusters larger than this threshold will have different hyperparameters.
-    """
-    num_clusters = len(np.unique(clusters))
-    cluster_sizes = [np.sum(clusters == label) for label in range(num_clusters)]
-
-    size_threshold = np.inf
-    if config['large_cluster_threshold'] > 0:
-        sorted_sizes = sorted(cluster_sizes)
-        threshold_index = int((1 - config['large_cluster_threshold']) * num_clusters)
-        size_threshold = sorted_sizes[threshold_index]
-
-    return size_threshold
-
-
 def get_k_nearest_neighbors(user_idx, dist_matrix):
     """
     Get k nearest neighbors of a user based on the distance matrix.
@@ -103,7 +79,7 @@ def prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix):
     return train_test_split(X, y, test_size=config['test_size'])
 
 
-def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test, is_large_cluster=False):
+def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test):
     """
     Train and evaluate a neural network model on training and test data for a cluster of users.
     """
@@ -122,40 +98,28 @@ def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test, is_large_cl
         loss='binary_crossentropy',
         metrics=metrics)
 
-    # Define early stopping to prevent overfitting
-    # Parameters are adjusted depending on the cluster size
-    early_stopping = EarlyStopping(
-        monitor='val_loss',
-        # Set double patience for small clusters
-        patience=config['patience'] if is_large_cluster else config['patience'] * 2,
-        verbose=1,
-        # Don't restore weights for the large clusters
-        # Metrics continue improving for about 5 epochs even if loss is increasing
-        restore_best_weights=not is_large_cluster
-    )
+    # Set a callback for monitoring F1 score and implementing patience-based stopping
+    f1_score_callback = F1ScoreCallback(validation_data=(X_test, y_test), patience=config['patience'])
 
-    # Train the model
+    # Train the model with the F1 score callback
     model.fit(X_train, y_train, epochs=config['epochs'], batch_size=32,
-              callbacks=[early_stopping], validation_data=(X_test, y_test), verbose=1)
+              validation_data=(X_test, y_test),
+              callbacks=[f1_score_callback],
+              verbose=1)
 
     # Evaluate the model on training and test data
     train_metrics = model.evaluate(X_train, y_train, verbose=0)[1:]
     test_metrics = model.evaluate(X_test, y_test, verbose=0)[1:]
-
     train_precision, train_recall = train_metrics[0], train_metrics[1]
     test_precision, test_recall = test_metrics[0], test_metrics[1]
-
-    # Also evaluate F1 Score
-    def f1_score(precision, recall):
-        return 2 * (precision * recall) / (precision + recall)
 
     # Return a dictionary with the evaluation results
     cluster_result = {}
     for i in range(len(metrics)):
         cluster_result[f"Train {metrics[i].name}"] = train_metrics[i]
-        cluster_result[f"Train F1 Score"] = f1_score(train_precision, train_recall)
         cluster_result[f"Test {metrics[i].name}"] = test_metrics[i]
-        cluster_result[f"Test F1 Score"] = f1_score(test_precision, test_recall)
+    cluster_result[f"Train F1 Score"] = f1_score(train_precision, train_recall)
+    cluster_result[f"Test F1 Score"] = f1_score(test_precision, test_recall)
 
     return cluster_result
 
@@ -165,7 +129,6 @@ def train_and_evaluate(clusters, binary_ratings, dist_matrix):
     Train and evaluate a neural network model for each cluster of users.
     """
     results = []
-    large_cluster_size_threshold = determine_large_cluster_size_threshold(clusters)
 
     for cluster_label in range(len(np.unique(clusters))):
         print(f"\nTraining model for cluster {cluster_label}")
@@ -173,18 +136,14 @@ def train_and_evaluate(clusters, binary_ratings, dist_matrix):
         # Get the indices of users in the cluster
         user_indices = np.where(clusters == cluster_label)[0]
 
-        # Determine if it's a large cluster
-        cluster_size = len(user_indices)
-        is_large_cluster = cluster_size >= large_cluster_size_threshold
-
         # Prepare the data for training and testing
         X_train, X_test, y_train, y_test = prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix)
 
         # Train and evaluate a model for the cluster
-        train_result = train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test, is_large_cluster)
+        train_result = train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test)
 
         # Update the results
-        cluster_result = {"Cluster": cluster_label, "Size": cluster_size}
+        cluster_result = {"Cluster": cluster_label, "Size": len(user_indices)}
         cluster_result.update(train_result)
         results.append(cluster_result)
 
