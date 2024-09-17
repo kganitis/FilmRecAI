@@ -3,30 +3,29 @@ import pandas as pd
 from keras import layers, models
 from keras.src.callbacks import EarlyStopping
 from keras.src.optimizers import Adam
+from keras.src.metrics import Precision, Recall
 from sklearn.metrics import pairwise_distances
 from sklearn.model_selection import train_test_split
 
-import clustering as cl
+from clustering import agglomerative_clustering
 from plotting import plot_training_results
+
 
 config = {
     # Agglomerative Clustering parameters
-    'L': 30,  # Initial number of clusters to form (before merging small clusters into larger ones)
-    'min_cluster_size': 500,  # Minimum size for clusters
-    'large_cluster_threshold': 0.1667,  # Threshold for defining large clusters (model adjusts for those)
+    'L': 5,  # Number of clusters to form
+    'large_cluster_threshold': 0.2,  # Threshold for defining large clusters (model adjusts for those)
 
     # KNN and Train-Test Split parameters
     'k': 10,  # Number of neighbors for KNN feature generation
-    'test_size': 0.3,  # Proportion of the dataset to include in the test split
+    'test_size': 0.1,  # Proportion of the dataset to include in the test split
 
     # Neural Network Training parameters
-    'hidden_layers': (512, 256, 128),  # Sizes of the hidden layers in the neural network
-    'metrics': ['Accuracy', 'Precision', 'Recall', 'AUC'],  # Metrics to evaluate the model
-    'epochs': 200,  # Number of epochs for model training
-    'learning_rate': 0.001,  # Learning rate for model training
-    'patience': 40,  # Number of epochs with no improvement before stopping training
-    'dropout': 0.15,  # Dropout rate for regularization in the neural network
-    'batch_size': 32,  # Batch size for model training
+    'hidden_layers': (8192, 4096),  # Sizes of the hidden layers in the neural network
+    'metrics': [Precision(name="Precision"), Recall(name="Recall")],  # Metrics to evaluate the model
+    'epochs': 50,  # Number of epochs for model training
+    'learning_rate': 0.0001,  # Learning rate for model training
+    'patience': 5,  # Number of epochs with no improvement before stopping training
 }
 
 
@@ -43,7 +42,7 @@ def run_recommendation_pipeline(ratings_df):
     dist_matrix = pairwise_distances(ratings_matrix > 0, metric='jaccard')
 
     # Perform clustering on the distance matrix
-    clusters = cl.agglomerative_clustering(dist_matrix, config['L'], config['min_cluster_size'])
+    clusters = agglomerative_clustering(dist_matrix, config['L'])
 
     # Train and evaluate a model for each cluster
     results = train_and_evaluate(clusters, binary_ratings, dist_matrix)
@@ -54,7 +53,9 @@ def run_recommendation_pipeline(ratings_df):
     print("\nCluster-wise Results:")
     print(results_df)
 
-    plot_training_results(results_df, config['metrics'])
+    # Plot results
+    metric_names = [metric.name for metric in config['metrics']] + ["F1 Score"]
+    plot_training_results(results_df, metric_names)
 
 
 def determine_large_cluster_size_threshold(clusters):
@@ -102,62 +103,59 @@ def prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix):
     return train_test_split(X, y, test_size=config['test_size'])
 
 
-def adjust_hidden_layers(cluster_size, size_threshold):
-    """
-    Adjust the hidden layers of the neural network for clusters larger than a given size threshold.
-    """
-    hidden_layers = config['hidden_layers']
-    is_large_cluster = config['large_cluster_threshold'] > 0 and cluster_size >= size_threshold
-    if is_large_cluster:
-        return [2 * hidden_layers[0]] + list(hidden_layers)
-    return hidden_layers
-
-
-def create_model(hidden_layers, input_dim, output_dim):
-    """
-    Create a Multi-Layer Neural Network model with the specified hidden layers and input/output dimensions.
-    Does not compile or train the model.
-    """
-    model = models.Sequential()
-    model.add(layers.Input(shape=(input_dim,)))
-
-    for units in hidden_layers:
-        model.add(layers.Dense(units, activation='relu'))
-        model.add(layers.Dropout(config['dropout']))
-    model.add(layers.Dense(output_dim, activation='sigmoid'))
-
-    return model
-
-
-def train_and_evaluate_model(model, X_train, y_train, X_test, y_test):
+def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test, is_large_cluster=False):
     """
     Train and evaluate a neural network model on training and test data for a cluster of users.
     """
-    # Compile the neural network model
+    # Create a neural network model
+    model = models.Sequential()
+    model.add(layers.Input(shape=(X_train.shape[1],)))
+    for units in config['hidden_layers']:
+        model.add(layers.Dense(units, activation='relu'))
+    model.add(layers.Dense(y_train.shape[1], activation='sigmoid'))
+
     metrics = config['metrics']
-    model.compile(optimizer=Adam(learning_rate=config['learning_rate']), loss='binary_crossentropy', metrics=metrics)
+
+    # Compile the neural network model
+    model.compile(optimizer=Adam(
+        learning_rate=config['learning_rate']),
+        loss='binary_crossentropy',
+        metrics=metrics)
 
     # Define early stopping to prevent overfitting
+    # Parameters are adjusted depending on the cluster size
     early_stopping = EarlyStopping(
         monitor='val_loss',
-        patience=config['patience'],
+        # Set double patience for small clusters
+        patience=config['patience'] if is_large_cluster else config['patience'] * 2,
         verbose=1,
-        restore_best_weights=True
+        # Don't restore weights for the large clusters
+        # Metrics continue improving for about 5 epochs even if loss is increasing
+        restore_best_weights=not is_large_cluster
     )
 
     # Train the model
-    model.fit(X_train, y_train, epochs=config['epochs'], batch_size=config['batch_size'],
+    model.fit(X_train, y_train, epochs=config['epochs'], batch_size=32,
               callbacks=[early_stopping], validation_data=(X_test, y_test), verbose=1)
 
     # Evaluate the model on training and test data
     train_metrics = model.evaluate(X_train, y_train, verbose=0)[1:]
     test_metrics = model.evaluate(X_test, y_test, verbose=0)[1:]
 
+    train_precision, train_recall = train_metrics[0], train_metrics[1]
+    test_precision, test_recall = test_metrics[0], test_metrics[1]
+
+    # Also evaluate F1 Score
+    def f1_score(precision, recall):
+        return 2 * (precision * recall) / (precision + recall)
+
     # Return a dictionary with the evaluation results
     cluster_result = {}
     for i in range(len(metrics)):
-        cluster_result[f"Train {metrics[i]}"] = train_metrics[i]
-        cluster_result[f"Test {metrics[i]}"] = test_metrics[i]
+        cluster_result[f"Train {metrics[i].name}"] = train_metrics[i]
+        cluster_result[f"Train F1 Score"] = f1_score(train_precision, train_recall)
+        cluster_result[f"Test {metrics[i].name}"] = test_metrics[i]
+        cluster_result[f"Test F1 Score"] = f1_score(test_precision, test_recall)
 
     return cluster_result
 
@@ -175,20 +173,18 @@ def train_and_evaluate(clusters, binary_ratings, dist_matrix):
         # Get the indices of users in the cluster
         user_indices = np.where(clusters == cluster_label)[0]
 
+        # Determine if it's a large cluster
+        cluster_size = len(user_indices)
+        is_large_cluster = cluster_size >= large_cluster_size_threshold
+
         # Prepare the data for training and testing
         X_train, X_test, y_train, y_test = prepare_data_for_cluster(binary_ratings, user_indices, dist_matrix)
 
-        # Adjust the hidden layers for the neural network based on the cluster size
-        hidden_layers = adjust_hidden_layers(len(user_indices), large_cluster_size_threshold)
-
-        # Create the neural network model
-        model = create_model(hidden_layers, X_train.shape[1], y_train.shape[1])
-
-        # Train and evaluate the model
-        train_result = train_and_evaluate_model(model, X_train, X_test, y_train, y_test)
+        # Train and evaluate a model for the cluster
+        train_result = train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test, is_large_cluster)
 
         # Update the results
-        cluster_result = {"Cluster": cluster_label, "Size": len(user_indices)}
+        cluster_result = {"Cluster": cluster_label, "Size": cluster_size}
         cluster_result.update(train_result)
         results.append(cluster_result)
 
