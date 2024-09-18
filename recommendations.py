@@ -12,13 +12,14 @@ from plotting import plot_training_results
 
 config = {
     'L': 5,  # Number of clusters to form
-    'k': 10,  # Number of neighbors for KNN feature generation
+    'k': 20,  # Number of neighbors for KNN feature generation
     'test_size': 0.1,  # Proportion of the dataset to include in the test split
-    'hidden_layers': (8192, 4096),  # Sizes of the hidden layers in the neural network
+    'hidden_layers': (512, 256),  # Sizes of the hidden layers in the neural network
     'metrics': [Precision(name="Precision"), Recall(name="Recall")],  # Metrics to evaluate the model
     'epochs': 50,  # Number of epochs for model training
     'learning_rate': 0.0001,  # Learning rate for model training
     'patience': 10,  # Number of epochs with no improvement before stopping training
+    'threshold': 0.5  # Binary classification threshold for calculating F1 Score
 }
 
 
@@ -90,6 +91,7 @@ def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test):
         model.add(layers.Dense(units, activation='relu'))
     model.add(layers.Dense(y_train.shape[1], activation='sigmoid'))
 
+    val_data = (X_test, y_test)
     metrics = config['metrics']
 
     # Compile the neural network model
@@ -98,14 +100,15 @@ def train_and_evaluate_for_cluster(X_train, X_test, y_train, y_test):
         loss='binary_crossentropy',
         metrics=metrics)
 
-    # Set a callback for monitoring F1 score and implementing patience-based stopping
-    f1_score_callback = F1ScoreCallback(validation_data=(X_test, y_test), patience=config['patience'])
+    # Set a callback for monitoring F1 score, implementing patience-based stopping
+    # and applying a custom binary classification threshold
+    f1_score_callback = F1ScoreCallback(
+        validation_data=val_data,
+        patience=config['patience'],
+        threshold=config['threshold'])
 
     # Train the model with the F1 score callback
-    model.fit(X_train, y_train, epochs=config['epochs'], batch_size=32,
-              validation_data=(X_test, y_test),
-              callbacks=[f1_score_callback],
-              verbose=1)
+    model.fit(X_train, y_train, epochs=config['epochs'], validation_data=val_data, callbacks=[f1_score_callback])
 
     # Evaluate the model on training and test data
     train_metrics = model.evaluate(X_train, y_train, verbose=0)[1:]

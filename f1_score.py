@@ -3,7 +3,10 @@ import numpy as np
 
 
 def f1_score(precision, recall):
-    return 2 * (precision * recall) / (precision + recall)
+    if precision + recall > 0:
+        return 2 * (precision * recall) / (precision + recall)
+    else:
+        return 0.0
 
 
 class F1ScoreCallback(tf.keras.callbacks.Callback):
@@ -12,13 +15,14 @@ class F1ScoreCallback(tf.keras.callbacks.Callback):
     based on F1 score improvements, with patience. This callback saves the model's best weights
     based on the highest F1 score and restores them at the end of training.
     """
-    def __init__(self, validation_data, patience=5):
+    def __init__(self, validation_data, patience=5, threshold=0.5):
         super(F1ScoreCallback, self).__init__()
         self.validation_data = validation_data
         self.best_weights = None
         self.best_f1_score = -np.inf
         self.patience = patience
         self.epochs_since_improvement = 0
+        self.threshold = threshold
 
     def on_epoch_end(self, epoch, logs=None):
         """
@@ -29,8 +33,8 @@ class F1ScoreCallback(tf.keras.callbacks.Callback):
         # Get the validation data
         val_data, val_labels = self.validation_data
 
-        # Get the model's predictions for the validation data
-        val_predictions = (self.model.predict(val_data) > 0.5).astype(int)
+        # Get the model's predictions for the validation data, applyying the binary classification threshold
+        val_predictions = (self.model.predict(val_data) > self.threshold).astype(int)
 
         # Calculate precision and recall
         precision = tf.keras.metrics.Precision()
@@ -43,12 +47,9 @@ class F1ScoreCallback(tf.keras.callbacks.Callback):
         recall_value = recall.result().numpy()
 
         # Calculate F1 score
-        if precision_value + recall_value > 0:
-            val_f1_score = f1_score(precision_value, recall_value)
-        else:
-            val_f1_score = 0.0
+        val_f1_score = f1_score(precision_value, recall_value)
 
-        print(f"Epoch {epoch + 1}: val_F1_score: {val_f1_score:.4f}")
+        print(f"Epoch {epoch + 1}: val_F1_score (threshold={self.threshold}): {val_f1_score:.4f}")
 
         # Check if the F1 score has improved
         if val_f1_score > self.best_f1_score:

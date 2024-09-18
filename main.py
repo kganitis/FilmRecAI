@@ -8,7 +8,7 @@ MEDIUM = 'medium'  # for performance testing
 FAST = 'fast'  # default; for quick results
 MAX = 'max'  # for error testing
 
-EXEC_SPEED = FAST  # Set the execution speed here
+EXEC_SPEED = MEDIUM  # Set the execution speed here
 
 RUN_KMEANS_CLUSTERING_PIPELINE = True
 RUN_RECOMMENDATIONS_PIPELINE = True
@@ -52,10 +52,10 @@ def get_parameters_for_speed(speed='fast'):
         R_min_2, R_max_2, M_min_2 = 5, 15, 40
     elif speed == 'medium':
         R_min_1, R_max_1, M_min_1 = 100, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 44
+        R_min_2, R_max_2, M_min_2 = 5, 15, 42
     elif speed == 'fast':
         R_min_1, R_max_1, M_min_1 = 125, 200, 50
-        R_min_2, R_max_2, M_min_2 = 5, 15, 47
+        R_min_2, R_max_2, M_min_2 = 5, 15, 46
     elif speed == 'max':
         R_min_1, R_max_1, M_min_1 = 150, 200, 50
         R_min_2, R_max_2, M_min_2 = 5, 15, 50
